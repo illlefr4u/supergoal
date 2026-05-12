@@ -1,0 +1,16 @@
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (in case anyone npm-installs for the renderer)
+node_modules/
+package-lock.json
+
+# Local artifacts produced by superplan in its own repo (we ship templates, not artifacts)
+.superplan/
+
+# Logs
+*.log

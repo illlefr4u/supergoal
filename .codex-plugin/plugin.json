@@ -1,0 +1,9 @@
+{
+  "name": "superplanner",
+  "description": "Goal-compiler skill: turns a vague build request into a strict, testable plan and compiles a measurable /goal condition that drives autonomous execution to a verifiable end state.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Robert Courson"
+  },
+  "skills": "./skills/"
+}
