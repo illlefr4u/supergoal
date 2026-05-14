@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] — 2026-05-14
+
+Stage 1 now gathers the full picture in greenfield runs.
+
+### Changed
+
+- **Stage 1 greenfield no longer caps at 4 questions total.** The planner walks an explicit category checklist — platform, stack, **design direction**, integrations, scope, audience, performance, data model — eliminates anything memory or prompt already covers, and asks about every remaining gap in batches of up to 4 (the `AskUserQuestion` tool ceiling). Two batches is normal for a real greenfield task; three is rare but allowed.
+- Anti-patterns are now explicit in SKILL.md: don't proceed with silent assumptions about stack or design direction; don't pad questions when memory/prompt covers them; don't ask micro-details that belong in the Stage 6 revision menu.
+- Brownfield unchanged (0–2 questions; recon answers most structural questions).
+
+### Fixed
+
+- `.gitignore` was still referencing `.superplan/` (missed by the v0.5.0 mass-rename since the find filter didn't include extensionless files).
+
 ## [0.5.0] — 2026-05-14
 
 Renamed `superplan` → `supergoal` end-to-end. The skill produces a `/goal`, so the name now points at the central primitive. Breaking change for anyone who had v0.4.x installed: uninstall the old marketplace + plugin, then re-add at the new name.
