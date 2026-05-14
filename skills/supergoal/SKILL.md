@@ -27,7 +27,7 @@ If a phase can't be measured, it isn't a phase. Rewrite it until it can.
 ## How this skill works (one-shot summary)
 
 0. **Available context** — preload memory; detect available tools (Context7, WebSearch, MCPs, skills); resume any in-progress Supergoal state
-1. **Intake** — restate, classify, ask questions calibrated to context: **up to 4** for greenfield (no codebase to scan), **0–2** for brownfield (recon answers most of it)
+1. **Intake** — restate, classify, ask enough questions to cover every material gap. Greenfield walks the full category checklist (platform, stack, design direction, integrations, scope, audience, perf, data model) in batches of up to 4 until everything material is filled in; brownfield asks 0–2 since recon answers most structural questions.
 2. **Recon** — parallel codebase + environment scan
 3. **Deep think** — research best practices with whatever tools exist (optional, not required); list top-3 risks + dependencies
 4. **Decompose** — derive phase count from the task itself; no fixed cap
@@ -116,20 +116,38 @@ Echo the task back in **one sentence**. Then classify it (tags can combine):
 | `refactor` | Mentions "refactor", "clean up", "restructure" |
 | `ui` | Mentions "design", "polish", "UI", "UX", "responsive", "redesign" |
 
-**Calibrate the question count to the context.** The agent has no codebase to scan in greenfield runs, so it needs more verbal context up front. In brownfield runs, recon answers most of what would otherwise be a question.
+**Calibrate the question count to the context.** Greenfield has no codebase to scan, so it needs enough verbal context to plan well — never artificially limit questions when material info is missing. Brownfield runs lean on recon, so questions are sparse.
 
-### Greenfield — up to 4 questions, one batch
+### Greenfield — gather enough context to plan well
 
-A new project has no signal beyond the user's prompt + memory. Ask **up to 4 high-leverage questions** covering the biggest structural forks. Aim to cover the categories below, prioritized by how much each one changes the phase shape:
+A new project has no signal beyond the user's prompt + memory. The planner's job in Stage 1 is to **enumerate every category that meaningfully shapes the plan, eliminate the ones already answered by memory or prompt, and ask about every remaining one**. Don't stop until every material gap is filled.
 
-1. **Target platform / surface** — "iOS, Android, web, desktop, CLI, or combinations?" (Often the single biggest fork.)
-2. **Stack or framework preference** — "Next.js or SvelteKit? Expo or bare RN? FastAPI or Django?" Skip if memory or prompt already specifies.
-3. **Integration anchors** — auth provider, database, payment processor, hosting, anything that drops in cleanly only if chosen up front.
-4. **Scope cut-line** — "MVP-this-week or full feature?", "what is explicitly out of scope?"
+**Category checklist — work through this for every greenfield run:**
 
-Pick the four that matter most for *this* prompt. Don't ask all four if some are obvious from memory + prompt — answer those silently from memory and lead with "Applied from memory: …". If memory + prompt cover everything except, say, the auth provider, ask one question, not four. The cap is 4; the floor is whatever's actually unanswered.
+| Category | Why it shapes the plan |
+|---|---|
+| **Target platform / surface** | iOS, Android, web, desktop, CLI, multi — the biggest fork. Different stacks, different phases. |
+| **Stack / framework preference** | Next.js vs SvelteKit, Expo vs bare RN, FastAPI vs Django, Swift vs SwiftUI vs UIKit, etc. Affects every phase. |
+| **Design direction / aesthetic** | Minimal-mono, brutalist, glass morphism, Apple-native, dashboardy-corporate, retro, etc. Determines tokens, component shapes, Polish phase content. |
+| **Integration anchors** | Auth provider, database, payments, hosting, analytics, file storage, email — anything that locks in a vendor up front. |
+| **Scope cut-line** | MVP-this-week vs full feature; what's explicitly out of scope vs deferred to v2. |
+| **Primary use case / audience** | Solo-dev tool, team SaaS, public consumer app, internal admin — drives auth flow, onboarding shape, error tolerance. |
+| **Performance / scale constraints** | "Realtime sub-100ms" vs "background batch ok"; expected traffic; offline-first or online-only. Only ask if non-trivial. |
+| **Data model anchors** | If the prompt implies data, ask the shape ("users + posts? users + projects + tasks?"). Only if not obvious. |
 
-Everything else (naming, file paths, design tokens, library minor versions, copy, test framework if the stack has an obvious default, color palette, etc.) is **assumed**, not asked. Record assumptions in ROADMAP.md and surface them in Stage 6 — the revision menu handles corrections.
+**Process:**
+
+1. For each category, ask: *did the user's prompt mention it? Does memory have a relevant preference?*
+2. If yes → use that, surface as "Applied from memory: …" or "From your prompt: …"
+3. If no → that category becomes a question.
+4. Ask all remaining questions in **batches of up to 4** (the `AskUserQuestion` tool ceiling) until every material gap is filled. Two batches is fine for greenfield; three is rare but allowed if a complex task genuinely warrants it.
+5. Within each batch, lead with the highest-leverage choices (the ones that change the phase shape most).
+
+**Anti-patterns:**
+
+- **Don't ask one batch and then plan around silent assumptions for the rest.** If you're about to assume the design direction, the auth provider, AND the scope cut-line, that's 3 assumptions and one batch of follow-up is cheaper than getting it wrong.
+- **Don't pad questions when memory/prompt already covers them.** Reading "I want a SwiftUI iOS app with Liquid Glass" → don't ask "what platform?", "what stack?", or "what aesthetic?". Just ask about integrations, scope, and use case.
+- **Don't ask micro-details** that belong in plan review: naming, file paths, copy wording, color palette specifics, library minor versions, default test framework if the stack has one. Those go into ROADMAP.md as assumptions and surface in Stage 6's revision menu.
 
 ### Brownfield — 0–2 questions, one batch
 
@@ -143,10 +161,10 @@ Most well-described brownfield tasks ask **zero questions**.
 
 ### In both modes
 
-1. Lead with "Applied from memory: …" so the user sees what's being inherited and can correct stale memories before answering.
-2. Use a single `AskUserQuestion` batch (the tool maxes at 4 per call — that's the hard ceiling for either mode).
-3. If you'd ask zero, say "No clarifying questions — proceeding from prompt + memory + recon." and move straight to Stage 2 (greenfield: skip recon if cwd is empty).
-4. Never ask about anything you could responsibly assume and surface in the Stage 6 plan review.
+1. Lead with "Applied from memory: …" and "From your prompt: …" so the user sees what's being inherited or read off before answering.
+2. Each `AskUserQuestion` batch caps at 4 (tool limit). Greenfield can use multiple sequential batches; brownfield is one batch max.
+3. If you genuinely need zero questions, say "No clarifying questions — proceeding from prompt + memory + recon." and move straight to Stage 2.
+4. Never ask about anything you can responsibly assume — those go into the Stage 6 plan review for one-click correction.
 
 ---
 
@@ -387,7 +405,7 @@ Write the memory file under the detected MEM_DIR using the standard `name` / `de
 - **Adapt to available tools.** Detect what's there (Context7, WebSearch, MCPs, skills). Use what's available; degrade gracefully without it. Never hard-require a tool that might not be present.
 - **Memory is load-bearing.** Preload at Stage 0, surface as "Applied from memory: …" in Stage 1, write back at every phase boundary.
 - **"Perfect" is not a stopping condition — criteria are.** Translate every "perfect" into observable, falsifiable criteria.
-- **Two human gates, no more.** Clarifying gaps (Stage 1 — up to 4 for greenfield, often zero for brownfield) and plan review (Stage 6). Between and after, autonomous.
+- **Two human gates, no more.** Clarifying gaps (Stage 1 — walk the full category checklist for greenfield in batches of up to 4 until all material info is gathered; often zero for brownfield) and plan review (Stage 6). Between and after, autonomous.
 - **The loop self-heals.** Auto-retry once, then write a fix spec and execute inline, then escalate. Don't stop on first failure.
 - **The evaluator only sees the transcript.** Phase specs require the agent to surface their contract — START, commands, evidence, VERIFY, DONE — into the conversation, not just point at files.
 - **Each phase is independently shippable** in spirit. If phase 3 can't build/test on its own, the slicing is wrong.

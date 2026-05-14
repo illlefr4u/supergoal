@@ -9,8 +9,8 @@
 node_modules/
 package-lock.json
 
-# Local artifacts produced by superplan in its own repo (we ship templates, not artifacts)
-.superplan/
+# Local artifacts produced by supergoal in its own repo (we ship templates, not artifacts)
+.supergoal/
 
 # Logs
 *.log
