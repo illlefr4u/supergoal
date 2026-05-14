@@ -27,7 +27,7 @@ If a phase can't be measured, it isn't a phase. Rewrite it until it can.
 ## How this skill works (one-shot summary)
 
 0. **Available context** — preload memory; detect available tools (Context7, WebSearch, MCPs, skills); resume any in-progress Superplan state
-1. **Intake** — restate, classify, ask **0–2 questions only for true gaps** memory + prompt don't already answer
+1. **Intake** — restate, classify, ask questions calibrated to context: **up to 4** for greenfield (no codebase to scan), **0–2** for brownfield (recon answers most of it)
 2. **Recon** — parallel codebase + environment scan
 3. **Deep think** — research best practices with whatever tools exist (optional, not required); list top-3 risks + dependencies
 4. **Decompose** — derive phase count from the task itself; no fixed cap
@@ -116,26 +116,37 @@ Echo the task back in **one sentence**. Then classify it (tags can combine):
 | `refactor` | Mentions "refactor", "clean up", "restructure" |
 | `ui` | Mentions "design", "polish", "UI", "UX", "responsive", "redesign" |
 
-**Ask 0–2 clarifying questions** — only for true gaps that memory and the prompt don't already answer. Frictionless is the goal: if memory says the user prefers stack X and prompt says use X, don't ask "which stack?". Most well-described tasks should ask **zero questions**.
+**Calibrate the question count to the context.** The agent has no codebase to scan in greenfield runs, so it needs more verbal context up front. In brownfield runs, recon answers most of what would otherwise be a question.
 
-Process:
-1. List the structural ambiguities in the task (forks, scope cuts, integration anchors).
-2. Cross out any answered by memory (`applied-memories.md`) or by the prompt itself.
-3. If anything remains and would meaningfully change the phase shape, ask. Otherwise, proceed.
+### Greenfield — up to 4 questions, one batch
 
-What counts as **a true gap worth asking** (after memory + prompt resolution):
-- Architecture forks not covered: "iOS only or also web?", "monorepo or standalone?"
-- Integration anchors not covered: "which auth provider?", "which DB?"
-- Scope cut-lines: "MVP this week or full feature?"
-- Primary surface when ambiguous: "main use case A, B, or both?"
+A new project has no signal beyond the user's prompt + memory. Ask **up to 4 high-leverage questions** covering the biggest structural forks. Aim to cover the categories below, prioritized by how much each one changes the phase shape:
 
-What is **never** a question (record as assumption in ROADMAP.md, surface in Stage 6):
-- Naming, file paths, directory layout
-- Library minor versions and styling choices
-- Copy wording, color palettes
-- Test framework picks when the stack has an obvious default
+1. **Target platform / surface** — "iOS, Android, web, desktop, CLI, or combinations?" (Often the single biggest fork.)
+2. **Stack or framework preference** — "Next.js or SvelteKit? Expo or bare RN? FastAPI or Django?" Skip if memory or prompt already specifies.
+3. **Integration anchors** — auth provider, database, payment processor, hosting, anything that drops in cleanly only if chosen up front.
+4. **Scope cut-line** — "MVP-this-week or full feature?", "what is explicitly out of scope?"
 
-**Cap: 2 questions, one batch via `AskUserQuestion`.** Lead with "Applied from memory: …" so the user sees what's being inherited. If zero questions are needed, say "No clarifying questions — proceeding from prompt + memory." and move on.
+Pick the four that matter most for *this* prompt. Don't ask all four if some are obvious from memory + prompt — answer those silently from memory and lead with "Applied from memory: …". If memory + prompt cover everything except, say, the auth provider, ask one question, not four. The cap is 4; the floor is whatever's actually unanswered.
+
+Everything else (naming, file paths, design tokens, library minor versions, copy, test framework if the stack has an obvious default, color palette, etc.) is **assumed**, not asked. Record assumptions in ROADMAP.md and surface them in Stage 6 — the revision menu handles corrections.
+
+### Brownfield — 0–2 questions, one batch
+
+The codebase plus recon scripts already answer most structural questions (stack, package manager, build/test/lint, conventions, what exists). Ask only for **true gaps** memory + prompt + recon leave open:
+
+- Scope cut-line ("just this surface, or also touch the related ones?")
+- Compatibility surface ("backwards compat with the old API path, or break it?")
+- Primary fork when ambiguous ("which of these two existing patterns do you want me to extend?")
+
+Most well-described brownfield tasks ask **zero questions**.
+
+### In both modes
+
+1. Lead with "Applied from memory: …" so the user sees what's being inherited and can correct stale memories before answering.
+2. Use a single `AskUserQuestion` batch (the tool maxes at 4 per call — that's the hard ceiling for either mode).
+3. If you'd ask zero, say "No clarifying questions — proceeding from prompt + memory + recon." and move straight to Stage 2 (greenfield: skip recon if cwd is empty).
+4. Never ask about anything you could responsibly assume and surface in the Stage 6 plan review.
 
 ---
 
@@ -369,7 +380,7 @@ Write the memory file under the detected MEM_DIR using the standard `name` / `de
 - **Adapt to available tools.** Detect what's there (Context7, WebSearch, MCPs, skills). Use what's available; degrade gracefully without it. Never hard-require a tool that might not be present.
 - **Memory is load-bearing.** Preload at Stage 0, surface as "Applied from memory: …" in Stage 1, write back at every phase boundary.
 - **"Perfect" is not a stopping condition — criteria are.** Translate every "perfect" into observable, falsifiable criteria.
-- **Two human gates, no more.** Clarifying gaps (Stage 1, often zero) and plan review (Stage 6). Between and after, autonomous.
+- **Two human gates, no more.** Clarifying gaps (Stage 1 — up to 4 for greenfield, often zero for brownfield) and plan review (Stage 6). Between and after, autonomous.
 - **The loop self-heals.** Auto-retry once, then write a fix spec and execute inline, then escalate. Don't stop on first failure.
 - **The evaluator only sees the transcript.** Phase specs require the agent to surface their contract — START, commands, evidence, VERIFY, DONE — into the conversation, not just point at files.
 - **Each phase is independently shippable** in spirit. If phase 3 can't build/test on its own, the slicing is wrong.
