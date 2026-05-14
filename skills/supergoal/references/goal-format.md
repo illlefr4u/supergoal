@@ -23,15 +23,20 @@ Execute all phases of .supergoal/ROADMAP.md sequentially.
 Read .supergoal/phases/phase-N.md for each phase; do the work;
 run mandatory commands; print SUPERGOAL_PHASE_VERIFY then
 SUPERGOAL_PHASE_DONE for each phase; follow the failure-recovery
-protocol in .supergoal/PROTOCOL.md if any criterion fails; on the
-final phase, print SUPERGOAL_RUN_COMPLETE.
+protocol in .supergoal/PROTOCOL.md if any criterion fails. After
+the last phase, run the FINAL AUDIT in PROTOCOL.md (re-verify
+against ROADMAP.md; re-run aggregated mandatory commands;
+spot-check criteria; on gaps, write audit-fix-<round>.md and
+execute inline). Only after AUDIT_COMPLETE, print
+SUPERGOAL_RUN_COMPLETE.
 
-Done when SUPERGOAL_RUN_COMPLETE appears in the transcript with one
-SUPERGOAL_PHASE_DONE block per phase preceding it and no
-FAILURE_HANDOFF in this run.
+Done when SUPERGOAL_RUN_COMPLETE appears in the transcript with
+one SUPERGOAL_PHASE_DONE per phase, AUDIT_COMPLETE printed before
+SUPERGOAL_RUN_COMPLETE, and no FAILURE_HANDOFF or AUDIT_HANDOFF
+this run.
 ```
 
-This works on both hosts. There is no per-phase `/goal` dispatch and no inter-session chain — once active, a single `/goal` session reads PROTOCOL.md and loops through every phase spec until the end-state holds.
+This works on both hosts. There is no per-phase `/goal` dispatch and no inter-session chain — once active, a single `/goal` session reads PROTOCOL.md, loops through every phase spec, runs the final audit, and only completes when the audit is clean.
 
 ## Required transcript blocks (Supergoal-specific)
 
@@ -81,11 +86,71 @@ SUPERGOAL_PHASE_DONE
 Phase <N> complete. STATE.md updated.
 ```
 
-### `SUPERGOAL_RUN_COMPLETE` (once, on final phase only)
+### `AUDIT_START` (once per audit round, after the last phase)
+
+```
+AUDIT_START
+Round: <1|2|3>
+Phases to verify: <N>
+Criteria to re-check: <count>
+Commands to re-run: <comma-separated, deduplicated set>
+```
+
+### `AUDIT_VERIFY` (once per audit round, after re-checks complete)
+
+```
+AUDIT_VERIFY
+Per-phase completeness:
+- Phase 1: <DONE present | DONE missing>
+- Phase 2: ...
+Re-run mandatory commands:
+- <cmd>: exit <code> — <last line>
+- ...
+Acceptance criteria spot-check:
+- Phase 1 / "<criterion>": <pass | fail | trust-prior-verify> — <evidence>
+- ...
+Summary: <pass count> pass, <fail count> fail, <trust count> trust-prior
+```
+
+### `AUDIT_GAPS` (only if gaps found this round)
+
+```
+AUDIT_GAPS
+Round: <N>
+Gaps:
+- <gap 1>: <details>
+- <gap 2>: <details>
+Writing fix spec at .supergoal/phases/audit-fix-<N>.md, executing inline.
+```
+
+### `AUDIT_COMPLETE` (zero gaps — emit before SUPERGOAL_RUN_COMPLETE)
+
+```
+AUDIT_COMPLETE
+Rounds: <N>
+Phases re-verified: <count>
+Commands re-run clean: <count>
+Acceptance criteria: <pass count> pass / <0> fail / <trust count> trust-prior
+```
+
+### `AUDIT_HANDOFF` (3 audit rounds all failed — stop)
+
+```
+AUDIT_HANDOFF
+Round: 3
+Persistent gaps:
+- <gap>
+- ...
+Three audit rounds attempted; fix specs at .supergoal/phases/audit-fix-{1,2,3}.md
+Suggested next move: <one line>
+STATE.md updated to BLOCKED.
+```
+
+### `SUPERGOAL_RUN_COMPLETE` (once, after AUDIT_COMPLETE)
 
 ```
 SUPERGOAL_RUN_COMPLETE
-All <N> phases complete.
+All <N> phases complete. Audit passed in <rounds> round(s).
 Summary: <5 lines max — what shipped, what changed, what to verify manually>
 ```
 

@@ -12,8 +12,8 @@ Works on **Claude Code** and **Codex** (Codex CLI).
 flowchart TD
     Start(["/supergoal &lt;your task&gt;"]) --> S0["Stage 0<br/>Load memory + detect tools"]
     S0 --> S1{Greenfield<br/>or brownfield?}
-    S1 -->|Greenfield| Q1["Stage 1<br/>up to 4 questions"]
-    S1 -->|Brownfield| Q2["Stage 1<br/>0–2 questions"]
+    S1 -->|Greenfield| Q1["Stage 1<br/>walk full category checklist<br/>(platform, stack, design,<br/>integrations, scope, audience...)"]
+    S1 -->|Brownfield| Q2["Stage 1<br/>0–2 questions<br/>(recon answers most)"]
     Q1 --> S2["Stage 2<br/>Recon (parallel)"]
     Q2 --> S2
     S2 --> S3["Stage 3<br/>Risks + best practices"]
@@ -27,22 +27,29 @@ flowchart TD
     LOOP --> CHECK{Failure?}
     CHECK -->|None| NEXT{More phases?}
     NEXT -->|Yes| LOOP
-    NEXT -->|No| DONE(["SUPERGOAL_RUN_COMPLETE ✓"])
+    NEXT -->|No| AUDIT["FINAL AUDIT<br/>re-verify against ROADMAP<br/>re-run mandatory commands<br/>spot-check criteria"]
     CHECK -->|1st| R1["Auto-retry<br/>with probe injected"]
     R1 --> LOOP
     CHECK -->|2nd| R2["Write fix-spec,<br/>execute inline"]
     R2 --> LOOP
     CHECK -->|3rd| HANDOFF(["STOP — handoff with<br/>full probe history"])
+    AUDIT --> AGAPS{Gaps?}
+    AGAPS -->|None| DONE(["AUDIT_COMPLETE ✓<br/>SUPERGOAL_RUN_COMPLETE ✓"])
+    AGAPS -->|Round 1 or 2| AFIX["Write audit-fix-N.md,<br/>execute inline"]
+    AFIX --> AUDIT
+    AGAPS -->|Round 3| AHO(["STOP — AUDIT_HANDOFF<br/>persistent gaps"])
 
     classDef human fill:#fef3c7,stroke:#d97706,color:#000
     classDef done fill:#d1fae5,stroke:#059669,color:#000
     classDef stop fill:#fee2e2,stroke:#dc2626,color:#000
+    classDef audit fill:#dbeafe,stroke:#2563eb,color:#000
     class Start,PASTE human
     class DONE done
-    class HANDOFF stop
+    class HANDOFF,AHO stop
+    class AUDIT,AFIX audit
 ```
 
-Yellow = the only steps you do. Green = success terminal. Red = blocker handoff. Everything else is autonomous.
+Yellow = the only steps you do. Blue = the final audit that re-checks against your original plan. Green = success terminal (audit clean). Red = blocker handoff. Everything else is autonomous.
 
 ## How it's different
 
@@ -131,13 +138,14 @@ Restart Codex and `/supergoal` is available. To update later, re-run the clone-a
 What happens:
 
 1. **Stage 0 — Available context.** Detects your memory directory, preloads relevant feedback/user/project memories, senses which tools/MCPs are available this session.
-2. **Stage 1 — Intake.** Greenfield (no codebase to scan): up to 4 high-leverage questions covering platform/stack/integrations/scope. Brownfield (existing repo): 0–2 questions for true gaps only. Well-described tasks often ask zero.
+2. **Stage 1 — Intake.** Greenfield (no codebase to scan): walks the full category checklist (platform, stack, design direction, integrations, scope, audience, perf, data model) in batches of up to 4 until every material gap is filled. Brownfield (existing repo): 0–2 questions for true gaps only — recon answers most.
 3. **Stage 2 — Recon.** Parallel codebase/environment scan.
 4. **Stage 3 — Deep think.** Identifies top-3 risks + dependencies. Uses Context7/WebSearch if available (optional, not required).
 5. **Stage 4 — Decompose.** Phase count derived from the task — no fixed cap. Small change = 2 phases; full-stack greenfield = 8–12+.
 6. **Stage 5 — Write specs.** `ROADMAP.md` + `STATE.md` + one `phase-N.md` work spec per phase, all under `.supergoal/`.
 7. **Stage 6 — Plan review.** Shows phases, assumptions, risks, and applied memories. Concrete revision menu: **Start now / Adjust assumption / Tweak a phase / Restructure phases.**
 8. **Stage 7 — Hand off.** Prints a ready-to-paste `/goal` line. You paste it once; the chain runs phases sequentially with 3-strike auto-retry → fix-spec → handoff, writing a memory at each phase boundary so future runs start smarter.
+9. **Final audit (after the last phase, before `SUPERGOAL_RUN_COMPLETE`).** Re-reads the original ROADMAP, re-runs the deduplicated mandatory commands (build / typecheck / lint / tests) once at the end to catch cross-phase regressions a per-phase VERIFY can miss, spot-checks every acceptance criterion. On gaps it writes `audit-fix-<round>.md` and self-heals inline; up to 3 audit rounds before stopping. Only after `AUDIT_COMPLETE` does it print `SUPERGOAL_RUN_COMPLETE`.
 
 ## Self-healing failure recovery
 
@@ -204,7 +212,7 @@ skills/supergoal/
 
 ## Version
 
-Current: **v0.5.1**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current: **v0.5.2**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Marketplace consumers can pin a specific version via the `/plugin` UI. Auto-updates are off by default for third-party marketplaces — enable per-marketplace via `/plugin` → **Marketplaces** if you want them.
 

@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] — 2026-05-14
+
+Final audit stage. The run no longer completes on per-phase self-reports alone — it re-validates against the original plan and self-heals any gaps before declaring done.
+
+### Added
+
+- **Final audit (Stage 10 of the execution loop).** After the last phase and before `SUPERGOAL_RUN_COMPLETE`, the agent now:
+  1. Re-reads `ROADMAP.md` and pulls every phase's acceptance criteria fresh from the original plan (not from this run's self-reports).
+  2. Verifies one `SUPERGOAL_PHASE_DONE` per phase in the transcript.
+  3. Re-runs the deduplicated set of mandatory commands (build / typecheck / lint / full test suite) once at the end to catch cross-phase regressions a per-phase VERIFY can miss.
+  4. Spot-checks verifiable acceptance criteria (file exists, symbol exported, config key set, etc.); marks non-deterministic checks as `trust-prior-verify`.
+  5. On any gap → writes `.supergoal/phases/audit-fix-<round>.md`, executes inline using the same 3-strike per-criterion protocol, then re-runs the audit. Up to 3 audit rounds; on the 3rd round's failure, `AUDIT_HANDOFF` (stops without `SUPERGOAL_RUN_COMPLETE`).
+  6. On zero gaps → prints `AUDIT_COMPLETE`, then `SUPERGOAL_RUN_COMPLETE`.
+- **New transcript markers:** `AUDIT_START`, `AUDIT_VERIFY`, `AUDIT_GAPS`, `AUDIT_COMPLETE`, `AUDIT_HANDOFF`. Documented in `references/goal-format.md`.
+
+### Changed
+
+- **`/goal` end-state condition** now requires `AUDIT_COMPLETE` before `SUPERGOAL_RUN_COMPLETE` and forbids `AUDIT_HANDOFF` in addition to `FAILURE_HANDOFF`. Updated the ready-to-paste `/goal` text in SKILL.md Stage 7 and `references/goal-format.md`.
+- **PROTOCOL.md template** extended with the full audit protocol.
+- **README Mermaid diagram** now includes the audit + audit-fix loop with its own blue color class.
+
+### Why
+
+Per-phase VERIFY is a self-report. A phase can pass its own check while a later phase silently breaks it (a type added in phase 2 violated in phase 5; tests that passed mid-run break after refactor; a config key set in phase 1 overwritten in phase 4). The audit catches that by re-running aggregated build/typecheck/lint/tests once at the end and verifying every criterion against the original plan — not against the agent's own optimistic mid-run reports.
+
 ## [0.5.1] — 2026-05-14
 
 Stage 1 now gathers the full picture in greenfield runs.

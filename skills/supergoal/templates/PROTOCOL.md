@@ -15,7 +15,35 @@ Repeat until `SUPERGOAL_RUN_COMPLETE` is printed:
 7. Print `SUPERGOAL_PHASE_DONE`. Update `STATE.md`: mark phase N completed; set `Current phase: N+1`; bump `Last update` timestamp; append a one-line event.
 8. **User-interrupt check.** If a user message has arrived since the last turn, pause; address the message; ask before resuming.
 9. If N < total phases: continue with phase N+1 (back to step 1).
-10. If N == total: print `SUPERGOAL_RUN_COMPLETE` with a 5-line summary. The `/goal` condition is now satisfied.
+10. If N == total: do **not** print `SUPERGOAL_RUN_COMPLETE` yet. Run the **Final audit** below. Only after `AUDIT_COMPLETE`, print `SUPERGOAL_RUN_COMPLETE` with a 5-line summary. The `/goal` condition is satisfied at that point.
+
+## Final audit (Stage 10 — runs after the last phase, before completion)
+
+Per-phase VERIFY blocks are self-reports. The audit closes that loophole by re-validating against the **original** `ROADMAP.md`, not against this run's own self-reports. The audit runs up to 3 rounds; on the 3rd round's failure, `AUDIT_HANDOFF`.
+
+### Audit steps (one round)
+
+1. Print `AUDIT_START` (round number, total phase count, criteria count, deduplicated mandatory commands to re-run).
+2. Re-read `.supergoal/ROADMAP.md` and pull every phase's acceptance criteria fresh from the original plan.
+3. **Phase completeness:** scan the transcript for one `SUPERGOAL_PHASE_DONE` per phase 1..N. Any missing = an `AUDIT_GAP`.
+4. **Re-run aggregated mandatory commands** once each (build / typecheck / lint / full test suite — whatever the union of all phases' mandatory commands is, deduplicated). Surface last ~10 lines + exit code. Non-zero exit = an `AUDIT_GAP`.
+5. **Spot-check verifiable acceptance criteria** across all phases:
+   - "File X exists" / "Function Y exported" / "Config key Z set" / "No `console.log` in app code" → re-check via `ls`/`grep`/`cat`.
+   - "Screenshot showed X" / "Manual smoke test passed" / non-deterministic checks → mark `trust-prior-verify`, don't re-run.
+6. Print `AUDIT_VERIFY` with each phase's status, each command's exit, each criterion's pass/fail/trust-prior + evidence.
+
+### If gaps found
+
+1. Print `AUDIT_GAPS` with the list.
+2. Write `.supergoal/phases/audit-fix-<round>.md` — a focused fix spec that targets only the failing criteria. Forbid scope creep. Use the affected phases' original VERIFY as the success gate.
+3. Execute the fix spec inline (same agent, same `/goal`, same per-criterion 3-strike protocol from regular phases).
+4. On fix success: loop back to step 1 of the audit (round + 1).
+5. On 3rd round's audit failure: print `AUDIT_HANDOFF` (full gap history, suggested next move), update `STATE.md` to `BLOCKED`, stop. Do **not** print `SUPERGOAL_RUN_COMPLETE`.
+
+### If zero gaps
+
+1. Print `AUDIT_COMPLETE` (rounds, phases re-verified, commands re-run clean, criteria pass / trust-prior counts).
+2. Print `SUPERGOAL_RUN_COMPLETE` with the 5-line summary.
 
 ## Failure recovery (3-strike)
 
@@ -66,5 +94,6 @@ See `references/goal-format.md` for the exact format of:
 - `SUPERGOAL_PHASE_VERIFY`
 - `MEMORY_SAVED`
 - `SUPERGOAL_PHASE_DONE`
+- `AUDIT_START` / `AUDIT_VERIFY` / `AUDIT_GAPS` / `AUDIT_COMPLETE` / `AUDIT_HANDOFF`
 - `SUPERGOAL_RUN_COMPLETE`
 - `FAILURE_PROBE` / `FAILURE_ESCALATE` / `FAILURE_HANDOFF`
