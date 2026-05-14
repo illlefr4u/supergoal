@@ -204,7 +204,7 @@ skills/supergoal/
 
 ## Version
 
-Current: **v0.5.0**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current: **v0.5.1**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Marketplace consumers can pin a specific version via the `/plugin` UI. Auto-updates are off by default for third-party marketplaces — enable per-marketplace via `/plugin` → **Marketplaces** if you want them.
 
