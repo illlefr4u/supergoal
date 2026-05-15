@@ -68,6 +68,10 @@ Engineering:
 - typecheck: <pass|fail>
 - lint: <pass|fail|pre-existing>
 - tests: <pass|fail|N pre-existing>
+Cleanliness (grep vs Baseline ref; non-zero unless phase spec sets "Cleanliness override:"):
+- debug prints added (console.log / print / etc.): <count>
+- session TODO/FIXME added: <count>
+- dead imports added: <count>
 Files changed: <count>
 Notable diffs:
 - <file>: <one-line summary>
@@ -109,7 +113,11 @@ Re-run mandatory commands:
 Acceptance criteria spot-check:
 - Phase 1 / "<criterion>": <pass | fail | trust-prior-verify> — <evidence>
 - ...
-Summary: <pass count> pass, <fail count> fail, <trust count> trust-prior
+Deliverables (filesystem ground-truth check vs Baseline ref):
+- Phase 1 / "<deliverable bullet>": <present | missing> — <git diff --stat path | ls path>
+- Phase 2 / "<deliverable bullet>": <present | missing> — <evidence>
+- ...
+Summary: <pass count> pass, <fail count> fail, <trust count> trust-prior, <missing count> deliverable-gaps
 ```
 
 ### `AUDIT_GAPS` (only if gaps found this round)
@@ -131,6 +139,8 @@ Rounds: <N>
 Phases re-verified: <count>
 Commands re-run clean: <count>
 Acceptance criteria: <pass count> pass / <0> fail / <trust count> trust-prior
+Deliverables: <present count> present / <0> missing
+Audit coverage: <re_verified> re-verified / <trust> trust-prior (<pct>%)
 ```
 
 ### `AUDIT_HANDOFF` (3 audit rounds all failed — stop)
@@ -150,9 +160,13 @@ STATE.md updated to BLOCKED.
 
 ```
 SUPERGOAL_RUN_COMPLETE
+[⚠ Audit coverage: <re_verified> re-verified, <trust_prior> trust-prior (<pct>%). Eyeball UI/UX before merging.]   ← only when trust-prior fraction > 30%
+Audit coverage: <re_verified> re-verified, <trust_prior> trust-prior (<pct>%).
 All <N> phases complete. Audit passed in <rounds> round(s).
 Summary: <5 lines max — what shipped, what changed, what to verify manually>
 ```
+
+The first banner is **only** printed when trust-prior is more than 30% of total checks. Below 30%, only the plain `Audit coverage:` line appears — same honesty, no false alarm.
 
 ## Failure blocks (used by recovery protocol)
 

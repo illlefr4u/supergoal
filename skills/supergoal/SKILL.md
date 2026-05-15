@@ -262,6 +262,23 @@ Validate each spec with `bash $SUPERGOAL_DIR/scripts/validate-phase.sh .supergoa
 
 Before any `/goal` is dispatched, show the user the full plan and **ask for explicit confirmation**. The chain runs unsupervised once it starts, so this is the last cheap moment to correct course. Skipping this step is a bug.
 
+### Stage 6a — Self-critique pass (cheap, runs once)
+
+Plan-time is the cheapest moment to catch the most expensive bugs (vague criteria, mis-sliced phases, weak dependencies). Before printing the summary, run **one** self-critique turn answering exactly three questions:
+
+1. **Falsifiability:** Is every acceptance criterion across every phase a yes/no test, not a vibe? Flag any that say "works", "good", "ready", "correct" without a measurable predicate.
+2. **Phase atomicity:** Is any phase secretly two coherent units packed into one (deliverables that don't share a verify gate, names containing "and", split-able dependency lines)?
+3. **Weakest dependency:** Where would a partial failure cascade worst? (e.g., phase 2 unblocks 3, 4, and 5 — if 2 ships shaky, three phases inherit the bug.)
+
+**Output:**
+
+- If clean: record `Self-critique: clean.` and proceed.
+- If findings: list 1–3 specific findings (no padding). For falsifiability issues, **rewrite the offending criteria in place** in the affected `phase-N.md` files and `ROADMAP.md` before printing the summary. Re-run `validate-phase.sh` on any touched spec. Surface the rewrites in the Stage 6 summary so the user sees the post-critique version, not the pre-critique one.
+
+Honesty check: this pass must produce findings *or* a "clean" verdict per run. If it silently always says "clean" on real plans, it's theater and we remove it in the next release.
+
+### Stage 6b — Summary print
+
 Print a scannable summary in this exact shape:
 
 ```
@@ -290,6 +307,12 @@ Top risks & mitigations:
   2. <risk> → <mitigation>
   3. <risk> → <mitigation>
 
+Self-critique:
+  - <finding 1, or "clean">
+  - <finding 2 (optional)>
+  - <finding 3 (optional)>
+  (criteria rewrites applied in-place if any were flagged)
+
 Artifacts:
   Roadmap: .supergoal/ROADMAP.md
   Progress: .supergoal/STATE.md (auto-updates)
@@ -302,7 +325,7 @@ fix-spec recovery.
 
 Then call `AskUserQuestion` with one question, header "Start chain?", offering **concrete revision modes** (not a vague "revise plan"):
 
-- **Start now** — print the ready-to-paste `/goal` line; I paste it and the chain runs unsupervised
+- **Start now** — run pre-flight smoke check (Stage 6.5), then print the ready-to-paste `/goal` line; I paste it and the chain runs unsupervised
 - **Adjust an assumption** — pick one to change (will re-show plan)
 - **Tweak a phase** — change criteria, scope, or commands for a specific phase
 - **Restructure phases** — merge, split, add, or remove a phase
@@ -313,11 +336,32 @@ Keep options at 4 max. If the user picks any revision option, follow up with a s
 
 ---
 
+## Stage 6.5 — Pre-flight smoke check
+
+After Stage 6 returns "Start now" and **before** printing the `/goal` block, run a single pre-flight pass against the deduplicated mandatory commands. This catches the case where the baseline is already broken (e.g., `pnpm build` red before phase 1 ever ran) — without this, the 3-strike loop would thrash trying to "fix" phase 1 work that was never the cause.
+
+**Procedure:**
+
+1. Read every `phase-N.md` spec and union their `Mandatory commands:` lines into a deduplicated set.
+2. Run each once. Capture exit code and last ~5 lines.
+3. **If all green:**
+   - Append a `Notable events` line to `.supergoal/STATE.md`: `<DATE> — Pre-flight green: <N> commands clean.`
+   - Print `PREFLIGHT_GREEN` with the per-command summary.
+   - Proceed to Stage 7.
+4. **If any red:**
+   - Append `<DATE> — Pre-flight red: <cmd> exited <code>.` to `STATE.md`.
+   - Print `PREFLIGHT_RED` with the failing command, exit code, last ~5 lines.
+   - Re-show the Stage 6 summary with the failures surfaced and a revised menu (still 4 options to stay under the `AskUserQuestion` ceiling): **"Skip pre-flight, dispatch anyway"** (replaces "Start now" — the user might know the baseline is intentionally broken, e.g., phase 1's whole job is to fix it) / **"Adjust an assumption"** / **"Tweak a phase"** / **"Restructure phases"**. If "Skip pre-flight, dispatch anyway" → log `<DATE> — Pre-flight bypassed by user.` and proceed to Stage 7. Any other choice loops back through the normal Stage 6 revision flow; after the user finishes revising, Stage 6.5 re-runs.
+
+**Honesty test:** real command run, real exit code. The "skip anyway" option keeps the user in control — no forced re-plan if the baseline being red is the point.
+
+---
+
 ## Stage 7 — Hand off the `/goal` dispatch (one paste)
 
 Slash commands on both Claude Code and Codex fire **only from user input** — agent message text is never parsed as a command. So Stage 7 is not an automatic dispatch; it's an honest one-paste handoff. After explicit "Start now" in Stage 6:
 
-1. Update `STATE.md`: `Status: READY_TO_DISPATCH`, `Current phase: 1`.
+1. Update `STATE.md`: `Status: READY_TO_DISPATCH`, `Current phase: 1`, and **capture the baseline ref** — set `Baseline ref:` to the output of `git rev-parse HEAD 2>/dev/null || echo "no-git"`. The audit reads this to diff deliverables against the working tree.
 2. Copy `$SUPERGOAL_DIR/templates/PROTOCOL.md` to `.supergoal/PROTOCOL.md`. This is the operating manual the executing agent reads at the start of the `/goal` session.
 3. Verify each `.supergoal/phases/phase-N.md` exists; run `bash $SUPERGOAL_DIR/scripts/validate-phase.sh .supergoal/phases/phase-<N>.md` on each.
 4. Print a fenced code block with the **ready-to-paste `/goal` command** — the condition below is short, instructional but measurable, and well under the 4000-char `/goal` argument limit:
@@ -346,7 +390,7 @@ The agent's loop, repeated until `SUPERGOAL_RUN_COMPLETE`:
 2. Read `.supergoal/phases/phase-N.md` → full work spec.
 3. Print `SUPERGOAL_PHASE_START` block with values from the spec.
 4. Do the work; run mandatory commands; surface evidence into the transcript.
-5. Print `SUPERGOAL_PHASE_VERIFY` block (every criterion `pass|fail` + engineering checks).
+5. Print `SUPERGOAL_PHASE_VERIFY` block (every criterion `pass|fail` + engineering checks + **cleanliness checks** — grep `git diff <Baseline ref>..HEAD` for stack-specific debug prints, session TODO/FIXME, dead imports; non-zero counts trigger 3-strike unless the phase spec declares `Cleanliness override:`).
 6. **Memory writeback check** — anything non-obvious learned? If yes, write a memory file under the detected MEM_DIR; print `MEMORY_SAVED: <name>` (or `MEMORY_SAVED: none`).
 7. Print `SUPERGOAL_PHASE_DONE`, update `STATE.md` (mark phase N complete, set Current phase = N+1, append events line).
 8. **User-interrupt check** — if a new user message has arrived since the last turn, pause and address it before continuing.
@@ -368,16 +412,21 @@ The audit runs once after the final phase. If it finds gaps, it writes a focused
 5. **Spot-check verifiable criteria** — for each acceptance criterion across all phases:
    - "File X exists" / "Function Y exported" / "Config key Z set" / "No `console.log` in app code" → re-check via `ls`/`grep`/`cat`.
    - "Screenshot showed X" / "Manual smoke test passed" / other non-deterministic checks → mark `trust-prior-verify`, do not re-run.
+5b. **Deliverable check** — for each phase block in `ROADMAP.md`, parse the `**Deliverables:**` bullets. For each bullet that names a file path or glob, run `git diff --stat <Baseline ref>..HEAD -- <path>` (fall back to `ls`/`git ls-files` for pure creation patterns). Missing files / empty diff → `AUDIT_GAP: phase <N> deliverable "<bullet>" not present`. Filesystem ground-truth — catches "agent said done but didn't ship."
 6. Print `AUDIT_VERIFY` block:
    - Per-phase status (DONE present or missing)
    - Each mandatory command's exit code
    - Each criterion's `pass | fail | trust-prior-verify` with evidence
+   - `Deliverables:` block from step 5b — `phase N / "<bullet>": present | missing`
 7. **If any gaps:**
    - Print `AUDIT_GAPS` with the list.
    - Write `.supergoal/phases/audit-fix-<round>.md` — a focused fix spec targeting **only** the failing criteria, with the original phase's VERIFY as the success gate, scope creep forbidden.
    - Execute the fix spec inline (same agent, same `/goal`, same 3-strike per-criterion protocol from regular phases).
    - On fix success: loop back to step 1 (round + 1). On 3rd round's failure: print `AUDIT_HANDOFF` (full gap history + suggested next move), update `STATE.md` to `BLOCKED`, stop. Do not print `SUPERGOAL_RUN_COMPLETE`.
-8. **If clean:** print `AUDIT_COMPLETE` with one-line summary (phases verified, commands re-run clean, criteria pass / trust-prior counts). Then print `SUPERGOAL_RUN_COMPLETE`.
+8. **If clean:**
+   - Compute `audit coverage` = `re_verified / (re_verified + trust_prior)` as a percentage (where `re_verified` = criteria with `pass` + deliverables marked `present`; `trust_prior` = criteria marked `trust-prior-verify`).
+   - Print `AUDIT_COMPLETE` with phases verified, commands re-run clean, criteria pass/trust-prior counts, deliverables present/missing counts, and the audit coverage %.
+   - Print `SUPERGOAL_RUN_COMPLETE`. If `trust_prior / (re_verified + trust_prior)` > 30%, prepend an honesty banner: `⚠ Audit coverage: X re-verified, Y trust-prior (Z%). Eyeball UI/UX before merging.` Below 30%, print the plain coverage line without the warning prefix.
 
 The audit is the difference between "every phase passed its own self-report" and "the final state matches the plan I originally approved." That is the bar.
 

@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-05-14
+
+Five additive refinements to the validation/audit loops. Every addition closes a specific real failure mode; nothing is added that could become "AI-fills-in-blanks" boilerplate. No removals — every existing transcript marker, STATE.md field, and protocol step stays put.
+
+### Added
+
+- **Diff-based audit step.** During the final audit, the agent now reads each phase's `**Deliverables:**` bullets from `ROADMAP.md` and runs `git diff --stat <Baseline ref>..HEAD -- <path>` (with `ls`/`git ls-files` fallback) per deliverable. Missing files / empty diffs → `AUDIT_GAP`. This catches the case where a phase's commands all pass and VERIFY says ✓ but the deliverable was never actually shipped. Filesystem ground truth, not transcript self-report.
+- **`Baseline ref:` field in `STATE.md`.** Captured at Stage 7 dispatch from `git rev-parse HEAD`. The audit reads it to diff deliverables against the working tree.
+- **Stage 6a self-critique pass.** Before printing the plan-review summary, the planner runs **one** turn answering three questions: (1) is each acceptance criterion falsifiable? (2) is any phase packing two coherent units? (3) where would a partial failure cascade worst? Findings appear in the Stage 6 summary as a `Self-critique:` block; falsifiability issues are rewritten in place before the user sees the summary. Cheapest moment to catch the most expensive bugs.
+- **Stage 6.5 pre-flight smoke check.** Between Stage 6 confirmation and Stage 7 dispatch, the planner runs the deduplicated mandatory commands once. `PREFLIGHT_GREEN` → proceed. `PREFLIGHT_RED` → re-show Stage 6 with a new revision option, **"Skip pre-flight and dispatch anyway"**, for cases where a broken baseline is the point (phase 1 fixes it). Prevents 3-strike thrash against a baseline that was never the agent's fault.
+- **Cleanliness pass in `SUPERGOAL_PHASE_VERIFY`.** Three grep-based counts against `git diff <Baseline ref>..HEAD`: debug prints added (`console.log` / `print(` / etc., stack-aware), session TODO/FIXME added, dead imports added. Non-zero counts trigger 3-strike like any failed criterion, unless the phase spec declares `Cleanliness override: ...` (narrow release valve for legitimate debug-shipping phases).
+- **Honest audit coverage in `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE`.** Audit completion now reports a coverage ratio — what fraction of the criteria/deliverable checks were re-verified vs. `trust-prior-verify`. When trust-prior is >30% of total checks, `SUPERGOAL_RUN_COMPLETE` prepends a one-line honesty banner: `⚠ Audit coverage: X re-verified, Y trust-prior (Z%). Eyeball UI/UX before merging.` Below 30%, only the plain coverage line appears.
+
+### Changed
+
+- **Stage 6 revision menu** "Start now" label now reflects that pre-flight kicks in next ("run pre-flight smoke check (Stage 6.5), then print the ready-to-paste `/goal` line").
+- **`AUDIT_VERIFY` block** extended with a `Deliverables:` summary block from the new step 5b.
+- **`SUPERGOAL_PHASE_VERIFY` block** extended with a `Cleanliness:` section.
+- **`AUDIT_COMPLETE` block** extended with `Deliverables:` and `Audit coverage:` lines.
+
+### Why
+
+Today's loops are honest about per-phase work but have three quiet gaps: (a) a phase can VERIFY-pass without actually shipping its deliverable; (b) the planner can approve a plan with vague criteria the audit can't fix later; (c) a phase can ship debug logs, dead imports, or session TODOs alongside passing tests. v0.6 closes each with a filesystem read, a one-turn plan-time critique, and a grep — none of which add new transcript ceremony or run repeatedly enough to bloat token cost. The audit-coverage banner is the system's most honest output: it admits what the audit verified vs. didn't, rather than implying machine-verification of everything.
+
 ## [0.5.2] — 2026-05-14
 
 Final audit stage. The run no longer completes on per-phase self-reports alone — it re-validates against the original plan and self-heals any gaps before declaring done.

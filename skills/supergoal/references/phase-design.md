@@ -63,6 +63,22 @@ Good:
 - `<SignInForm/>` renders without console errors
 - Authenticated middleware rejects requests without a session cookie
 
+## Cleanliness (grep-checked at VERIFY)
+
+Every phase's VERIFY block reports three grep-based counts against `git diff <Baseline ref>..HEAD`:
+
+- **Debug prints added** — `console.log`/`console.error` for JS/TS, `print(`/`pprint(` for Python, `print(`/`dump(` for Swift, `fmt.Println`/`log.Println` for Go (adjust per stack).
+- **Session TODO/FIXME added** — `\b(TODO|FIXME|XXX)\b` introduced in this run's diff (not pre-existing).
+- **Dead imports added** — new `import` statements with no usage in the same file.
+
+Any non-zero count is treated like a failed acceptance criterion (3-strike). If a phase legitimately needs to ship debug output (e.g., a phase building a debug overlay or a logging integration), declare it in the phase spec with:
+
+```
+Cleanliness override: debug prints allowed (this phase ships <component>)
+```
+
+The override is read by the executor at VERIFY time and counts are reported but not failed. Keep overrides narrow — they're a release valve, not a default.
+
 ## Mandatory commands
 
 Every phase must include the engineering commands the agent has to run and surface output for:

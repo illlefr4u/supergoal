@@ -25,7 +25,7 @@ supergoal/
 ├── LICENSE                     MIT.
 ├── README.md                   Public-facing: what it is, install, use, Mermaid flow charts.
 └── skills/supergoal/
-    ├── SKILL.md                The skill itself. ~430 lines, under the 500-line perf budget.
+    ├── SKILL.md                The skill itself. ~520 lines (v0.6 nudged it over the prior 500-line guideline; the phase-loop section duplicates PROTOCOL.md and is a candidate for slimming next release).
     ├── references/             Progressive-disclosure docs the agent reads when needed.
     │   ├── planning-depth.md   What makes a plan deserve "super".
     │   ├── phase-design.md     How to slice phases (adaptive count, no cap).
@@ -50,7 +50,7 @@ supergoal/
 
 ## How the skill works (one paragraph)
 
-When invoked, the skill runs Stages 0–6 (preload memory, detect tools, intake clarifying questions, recon, deep think, decompose into N phases, write per-phase specs to `.supergoal/`, plan review with revision menu). At Stage 7 it prints a ready-to-paste `/goal` command. The user pastes it. Inside the `/goal` session, the agent loops through each phase (read spec → do work → SUPERGOAL_PHASE_VERIFY → memory writeback → SUPERGOAL_PHASE_DONE), self-healing failures with a 3-strike retry/fix-spec/handoff protocol. After the last phase, the **final audit** re-reads the original `ROADMAP.md`, re-runs the deduplicated mandatory commands, spot-checks every acceptance criterion, and writes `audit-fix-<round>.md` for any gaps (up to 3 audit rounds). Only after `AUDIT_COMPLETE` does it print `SUPERGOAL_RUN_COMPLETE`.
+When invoked, the skill runs Stages 0–6.5 (preload memory, detect tools, intake clarifying questions, recon, deep think, decompose into N phases, write per-phase specs to `.supergoal/`, **self-critique + plan review with revision menu**, **pre-flight smoke check against the deduplicated mandatory commands**). At Stage 7 it captures `Baseline ref:` into `STATE.md` and prints a ready-to-paste `/goal` command. The user pastes it. Inside the `/goal` session, the agent loops through each phase (read spec → do work → SUPERGOAL_PHASE_VERIFY including cleanliness counts → memory writeback → SUPERGOAL_PHASE_DONE), self-healing failures with a 3-strike retry/fix-spec/handoff protocol. After the last phase, the **final audit** re-reads the original `ROADMAP.md`, re-runs the deduplicated mandatory commands, spot-checks every acceptance criterion, **diff-checks every declared deliverable against `Baseline ref`**, and writes `audit-fix-<round>.md` for any gaps (up to 3 audit rounds). Only after `AUDIT_COMPLETE` does it print `SUPERGOAL_RUN_COMPLETE` — with an audit-coverage line that warns when more than 30% of checks were `trust-prior-verify`.
 
 ## Making changes
 
@@ -144,19 +144,18 @@ Full format spec: `skills/supergoal/references/goal-format.md`.
 - **Memory writeback is per-phase, optional**. The agent emits `MEMORY_SAVED: <name>` or `MEMORY_SAVED: none`. Future runs preload these for the user — load-bearing for the "starts smarter" pitch.
 - **Mermaid renders natively in GitHub README** but not always in every external markdown viewer. Stick to standard Mermaid syntax (flowchart TD / LR, subgraphs, classDef styling).
 
-## Working state (as of v0.5.2 — 2026-05-14)
+## Working state (as of v0.6.0 — 2026-05-14)
 
-- All planning + execution surfaces (Stages 0–7 + Phase loop + Final audit) are implemented and live.
-- End-to-end install verified on this machine: marketplace → install → plugin details show `supergoal 0.5.2`.
-- All three SKILL.md locations (repo source, Claude Code plugin cache, Codex skill dir) confirmed byte-identical.
-- GitHub repo description, README headline, CHANGELOG, plugin.json, tag, and the live install metadata all aligned at v0.5.2.
-- One known lag: the GitHub "Contributors" sidebar/graph is still recomputing after a prior history rewrite. The actual `/contributors` API returns only `robzilla1738`. The sidebar will catch up on GitHub's schedule.
+- All planning + execution surfaces (Stages 0–6.5 + Phase loop + Final audit) are implemented and live, including the v0.6 additions: Stage 6a self-critique, Stage 6.5 pre-flight, cleanliness counts in `SUPERGOAL_PHASE_VERIFY`, diff-based deliverable check in the final audit, and the `Audit coverage:` honesty line in `AUDIT_COMPLETE` / `SUPERGOAL_RUN_COMPLETE`.
+- README headline, CHANGELOG top entry, and `plugin.json` `version` all aligned at v0.6.0.
+- Both SKILL.md locations (repo source + Codex skill dir at `~/.codex/skills/supergoal/`) kept in sync after each shipped change via the documented `rm -rf … && cp -R …` recipe.
+- Marketplace install verification for v0.6.0 happens after push: `claude plugin marketplace update supergoal` → `claude plugin update supergoal@supergoal` → confirm `/plugin` lists `supergoal 0.6.0`.
 
 ## Open work (none blocking)
 
-- First production use of `/supergoal` on a non-trivial task is the actual shakedown. Until then, design correctness is established by code review and the `claude plugin validate` checks, not real-world.
-- The Mermaid diagrams in `README.md` are a v0.5.2 addition; tweak as the visual story matures.
-- Audit step is new in v0.5.2; observe how many real-world gaps it surfaces vs how often the per-phase VERIFY caught everything. If audits never find gaps, the value is mostly defensive; if they routinely catch regressions, prioritize making the audit's command-rerun set smarter (e.g., only re-run commands whose touched files were modified since the last successful run).
+- v0.6 is additive: every existing transcript marker, STATE.md field, and protocol step still works. No migration needed.
+- Backlog (deferred from the v0.6 brainstorm, not in this release): plan-fitness checkpoint for runs ≥8 phases, `PHASE_SPEC_READ` calibration block, skill-binding written into phase specs, scope-driven Polish & Harden menu, resume-from-`BLOCKED` pathway. Plus the still-deferred removal candidates (`Type:` tag, `MEMORY_SAVED: none` lines, `STATE.md` engineering-check duplication, possibly collapsing 3-tier failure recovery to 2-tier). Revisit each once we have signal on how often the new checks actually catch things.
+- Observe how often Stage 6a self-critique produces findings vs. "clean" on real plans — if it's nearly always "clean", drop it next release per the honesty test in SKILL.md.
 
 ## Related
 

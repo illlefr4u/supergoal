@@ -4,6 +4,8 @@
 **Current phase:** —
 **Started:** {{DATE}}
 **Last update:** {{DATE}}
+**Baseline ref:** {{BASELINE_SHA}}    <!-- HEAD sha captured at Stage 7 dispatch; the final audit uses this for the deliverable diff check -->
+
 
 ## Phase progress
 
