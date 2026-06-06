@@ -24,10 +24,10 @@ Read <run-root>/phases/phase-N.md for each phase; do the work;
 run mandatory commands; print SUPERGOAL_PHASE_VERIFY then
 SUPERGOAL_PHASE_DONE for each phase; follow the failure-recovery
 protocol in <run-root>/PROTOCOL.md if any criterion fails. After
-the last phase, run the FINAL AUDIT in PROTOCOL.md (re-verify
-against ROADMAP.md; re-run aggregated mandatory commands;
-spot-check criteria; on gaps, write audit-fix-<round>.md and
-execute inline). Only after AUDIT_COMPLETE, print
+the last phase, run the FINAL AUDIT in <run-root>/PROTOCOL.md (re-verify
+against <run-root>/ROADMAP.md; re-run aggregated mandatory commands;
+spot-check criteria; on gaps, write <run-root>/phases/audit-fix-<round>.md
+and execute inline). Only after AUDIT_COMPLETE, print
 SUPERGOAL_RUN_COMPLETE.
 
 Done when SUPERGOAL_RUN_COMPLETE appears in the transcript with
