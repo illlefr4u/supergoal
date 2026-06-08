@@ -178,6 +178,7 @@ Full format spec: `skills/supergoal/references/goal-format.md`.
 
 ## Open work (none blocking)
 
+- **In progress on branch `run-kernel-extract`:** an optional mechanical-verification "run kernel" (`scripts/sg.py`) added as a *progressive enhancement* (markdown stays the universal default; kernel auto-activates only when python3+git are present). Full design, locked decisions, status, and remaining work live in [`docs/run-kernel.md`](docs/run-kernel.md). Originated as a mine-not-merge extraction of PR #4.
 - v0.6 is additive: every existing transcript marker, STATE.md field, and protocol step still works. No migration needed.
 - Backlog (deferred from the v0.6 brainstorm, not in this release): plan-fitness checkpoint for runs ≥8 phases, `PHASE_SPEC_READ` calibration block, skill-binding written into phase specs, scope-driven Polish & Harden menu, resume-from-`BLOCKED` pathway. Plus the still-deferred removal candidates (`Type:` tag, `MEMORY_SAVED: none` lines, `STATE.md` engineering-check duplication, possibly collapsing 3-tier failure recovery to 2-tier). Revisit each once we have signal on how often the new checks actually catch things.
 - Observe how often Stage 6a self-critique produces findings vs. "clean" on real plans — if it's nearly always "clean", drop it next release per the honesty test in SKILL.md.
