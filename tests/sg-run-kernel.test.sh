@@ -5,16 +5,16 @@ set -u
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SG="$REPO_ROOT/skills/supergoal/scripts/sg.py"
-RS="$REPO_ROOT/skills/supergoal/scripts/repo-state.sh"
 
 if [ ! -f "$SG" ]; then
   echo "FATAL: sg.py not found at $SG" >&2
   exit 1
 fi
-if [ ! -f "$RS" ]; then
-  echo "FATAL: repo-state.sh not found at $RS" >&2
-  exit 1
-fi
+
+# The kernel is deliberately bash-free: it does its own git reads in Python and
+# never copies or invokes repo-state.sh. These fixtures therefore never place a
+# repo-state.sh in the run root, so the whole suite exercises the pure-Python
+# git path and would fail if a bash dependency crept back in.
 
 pass=0
 fail=0
@@ -51,7 +51,6 @@ setup_fixture() {
 
   RUN_ROOT="$WORKDIR/.supergoal/test-run"
   mkdir -p "$RUN_ROOT/phases" "$RUN_ROOT/evidence/phase-1/commands" "$RUN_ROOT/evidence/phase-1/diffs" "$RUN_ROOT/evidence/phase-2/commands"
-  cp "$RS" "$RUN_ROOT/repo-state.sh"
   cp "$SG" "$RUN_ROOT/sg.py"
 
   cat > "$RUN_ROOT/ROADMAP.md" <<'EOF'
@@ -256,7 +255,7 @@ assert_contains "resume includes failure message" "fixture failure" "$OUT"
 cleanup_fixture
 
 echo
-echo "[8] audit detects missing deliverable using repo-state.sh"
+echo "[8] audit detects missing deliverable via pure-Python git"
 setup_fixture
 rm -f src/new.txt
 set_phase_statuses_complete

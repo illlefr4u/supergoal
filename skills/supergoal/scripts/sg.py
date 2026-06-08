@@ -15,7 +15,6 @@ import html
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -178,51 +177,114 @@ def baseline_ref(manifest: dict[str, Any], run_root: Path) -> str:
     return "no-git"
 
 
-def bash_executable() -> str | None:
-    found = shutil.which("bash")
-    if found:
-        return found
-    candidates = [
-        Path("C:/Program Files/Git/bin/bash.exe"),
-        Path("C:/Program Files/Git/usr/bin/bash.exe"),
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return str(candidate)
-    return None
+def _git(*args: str) -> tuple[int, str, str]:
+    """Run a read-only git command in the current working tree.
 
-
-def repo_state_script(run_root: Path) -> Path | None:
-    candidates = [
-        run_root / "repo-state.sh",
-        Path(__file__).resolve().with_name("repo-state.sh"),
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def run_repo_state(run_root: Path, subcommand: str, *args: str) -> tuple[int, str, str]:
-    script = repo_state_script(run_root)
-    if script is None:
-        return 127, "", "repo-state.sh not found"
-    bash = bash_executable()
-    if bash is None:
-        return 127, "", "bash not found"
-    proc = subprocess.run(
-        [bash, str(script), subcommand, *args],
-        cwd=str(Path.cwd()),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    Returns (returncode, stdout, stderr). Never mutates the repo or index.
+    Returns rc 127 when git itself is unavailable so callers can degrade.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=str(Path.cwd()),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except (OSError, ValueError):
+        return 127, "", "git not found"
     return proc.returncode, proc.stdout, proc.stderr
 
 
+def git_available() -> bool:
+    return _git("--version")[0] == 0
+
+
+def in_git_repo() -> bool:
+    rc, out, _ = _git("rev-parse", "--is-inside-work-tree")
+    return rc == 0 and out.strip() == "true"
+
+
+def baseline_ok(baseline: str) -> bool:
+    """True only when <baseline> resolves to a real commit in this repo."""
+    b = (baseline or "").strip()
+    if not b or b == "no-git":
+        return False
+    return _git("rev-parse", "--verify", "--quiet", f"{b}^{{commit}}")[0] == 0
+
+
+def scope_baseline_available(baseline: str) -> bool:
+    """Whether a git baseline exists to compare the working tree against.
+
+    When this is False the scope firewall and deliverable diff cannot run; callers
+    must announce the skip rather than silently report no changes.
+    """
+    return git_available() and in_git_repo() and baseline_ok(baseline)
+
+
+def _repo_changed_files(baseline: str) -> tuple[int, str, str]:
+    """Paths changed since <baseline>: tracked diff (committed+staged+unstaged+
+    deleted) plus untracked files. Mirrors repo-state.sh `changed-files`, in pure
+    Python so the kernel needs git but not bash."""
+    if not scope_baseline_available(baseline):
+        return 0, "", ""
+    names: set[str] = set()
+    rc, out, _ = _git("diff", "--name-only", baseline)
+    if rc == 0:
+        names.update(line for line in out.splitlines() if line.strip())
+    rc, out, _ = _git("ls-files", "--others", "--exclude-standard")
+    if rc == 0:
+        names.update(line for line in out.splitlines() if line.strip())
+    return 0, "\n".join(sorted(names)), ""
+
+
+def _repo_deliverable(baseline: str, path: str) -> tuple[int, str, str]:
+    """Present|missing (+ evidence) for a deliverable path. Mirrors repo-state.sh
+    `deliverable`: tracked change vs baseline, then untracked new file, then a
+    plain existence net; degrades to existence-only without a usable baseline."""
+    if scope_baseline_available(baseline):
+        rc, out, _ = _git("diff", "--stat", baseline, "--", path)
+        if rc == 0 and out.strip():
+            last = out.strip().splitlines()[-1].strip()
+            return 0, f"present — changed vs baseline ({last})", ""
+        rc, out, _ = _git("ls-files", "--others", "--exclude-standard", "--", path)
+        if rc == 0 and out.strip():
+            return 0, f"present — untracked new file ({out.strip().splitlines()[0]})", ""
+        if Path(path).exists():
+            return 0, "present — exists, unchanged since baseline", ""
+        rc, out, _ = _git("ls-files", "--", path)
+        if rc == 0 and out.strip():
+            return 0, "present — tracked, unchanged since baseline", ""
+        return 1, "missing", ""
+    # Fallback: no git or invalid baseline — existence only.
+    if Path(path).exists():
+        return 0, "present — exists on disk (baseline unavailable)", ""
+    if in_git_repo():
+        rc, out, _ = _git("ls-files", "--", path)
+        if rc == 0 and out.strip():
+            return 0, "present — tracked (baseline unavailable)", ""
+    return 1, "missing", ""
+
+
+def run_repo_state(subcommand: str, *args: str) -> tuple[int, str, str]:
+    """Pure-Python git replacement for the two repo-state reads the kernel needs.
+
+    Dropping the bash + repo-state.sh shell-out lowers the kernel's capability
+    floor to python3 + git (no bash), which matters on Windows. The markdown
+    baseline path still uses repo-state.sh; the kernel no longer does.
+    """
+    if subcommand == "changed-files":
+        return _repo_changed_files(args[0] if args else "no-git")
+    if subcommand == "deliverable":
+        if len(args) < 2:
+            return 2, "", "usage: deliverable <baseline> <path>"
+        return _repo_deliverable(args[0], args[1])
+    return 127, "", f"unknown subcommand {subcommand}"
+
+
 def changed_files(run_root: Path, manifest: dict[str, Any]) -> list[str]:
-    rc, out, err = run_repo_state(run_root, "changed-files", baseline_ref(manifest, run_root))
+    rc, out, err = run_repo_state("changed-files", baseline_ref(manifest, run_root))
     if rc != 0:
         return []
     ignored_prefixes: list[str] = []
@@ -558,7 +620,7 @@ def deliverable_present(run_root: Path, manifest: dict[str, Any], deliverable: s
         matches = glob.glob(value, recursive=True)
         if matches:
             return True, f"glob matched {len(matches)} path(s)"
-    rc, out, err = run_repo_state(run_root, "deliverable", baseline_ref(manifest, run_root), value)
+    rc, out, err = run_repo_state("deliverable", baseline_ref(manifest, run_root), value)
     if rc == 0:
         return True, out.strip() or "present"
     return False, (out.strip() or err.strip() or "missing")

@@ -9,6 +9,10 @@
 node_modules/
 package-lock.json
 
+# Python bytecode cache (sg.py run kernel)
+__pycache__/
+*.pyc
+
 # Local artifacts produced by supergoal in its own repo (we ship templates, not artifacts)
 .supergoal/
 
