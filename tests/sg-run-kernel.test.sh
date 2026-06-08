@@ -275,5 +275,44 @@ assert_file "report.html exists" "$RUN_ROOT/report.html"
 cleanup_fixture
 
 echo
+echo "[10] gate without a git baseline announces the scope skip (no silent pass)"
+setup_fixture
+# Drop the baseline so the scope firewall has nothing to diff against.
+RUN_ROOT="$RUN_ROOT" python - <<'PY'
+import json, os
+from pathlib import Path
+p = Path(os.environ["RUN_ROOT"]) / "run.json"
+d = json.loads(p.read_text(encoding="utf-8"))
+d["run"]["baseline_ref"] = "no-git"
+p.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
+PY
+# An edit that WOULD be out-of-scope drift if a baseline existed.
+printf 'outside\n' > README.md
+run python "$SG" gate-phase "$RUN_ROOT" 1
+assert_rc "gate still completes without a baseline" 0
+assert_contains "gate announces scope skip" "SCOPE_CHECK skipped (no git baseline)" "$OUT"
+case "$OUT" in
+  *SCOPE_DRIFT*) no "no false SCOPE_DRIFT without baseline" "unexpected SCOPE_DRIFT in [$OUT]";;
+  *) ok "no false SCOPE_DRIFT without baseline";;
+esac
+cleanup_fixture
+
+echo
+echo "[11] scope skip is recorded as an event for the report"
+setup_fixture
+RUN_ROOT="$RUN_ROOT" python - <<'PY'
+import json, os
+from pathlib import Path
+p = Path(os.environ["RUN_ROOT"]) / "run.json"
+d = json.loads(p.read_text(encoding="utf-8"))
+d["run"]["baseline_ref"] = "no-git"
+p.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
+PY
+python "$SG" gate-phase "$RUN_ROOT" 1 >/dev/null
+run grep -q "phase.scope.skipped" "$RUN_ROOT/events.jsonl"
+assert_rc "scope skip recorded in events.jsonl" 0
+cleanup_fixture
+
+echo
 printf 'sg-run-kernel.test.sh: %s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

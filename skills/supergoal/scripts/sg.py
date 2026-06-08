@@ -586,13 +586,24 @@ def cmd_gate_phase(args: argparse.Namespace) -> int:
 
     allowed = phase.get("allowed_paths", [])
     allowed_list = [str(p) for p in allowed] if isinstance(allowed, list) else []
-    changed = changed_files(run_root, manifest)
-    drift = [path for path in changed if not is_allowed_path(path, allowed_list)]
-    if drift:
-        print("SCOPE_DRIFT")
-        for path in drift:
-            print(f"- {path}")
-        errors.append(f"{len(drift)} changed file(s) outside phase allowed_paths")
+    if scope_baseline_available(baseline_ref(manifest, run_root)):
+        changed = changed_files(run_root, manifest)
+        drift = [path for path in changed if not is_allowed_path(path, allowed_list)]
+        if drift:
+            print("SCOPE_DRIFT")
+            for path in drift:
+                print(f"- {path}")
+            errors.append(f"{len(drift)} changed file(s) outside phase allowed_paths")
+        else:
+            print(f"SCOPE_CHECK pass ({len(changed)} changed file(s) in scope)")
+    else:
+        # No git baseline to diff against: the scope firewall cannot run. Announce
+        # the skip instead of silently passing — an unverifiable check must never
+        # read as a clean one. This is a capability limit, not a violation, so it
+        # does not fail the gate; it is recorded so the report reflects it.
+        print("SCOPE_CHECK skipped (no git baseline)")
+        append_event(run_root, "phase.scope.skipped", phase=int(args.phase),
+                     message="scope firewall skipped: no git baseline to diff against")
 
     trust, total, pct = trust_debt_for_phase(phase)
     print(f"TRUST_DEBT phase {phase_id}: {trust}/{total} trust-prior ({pct:.0f}%)")
