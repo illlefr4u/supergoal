@@ -314,5 +314,92 @@ assert_rc "scope skip recorded in events.jsonl" 0
 cleanup_fixture
 
 echo
+echo "[12] compile turns ROADMAP.md into a valid run.json (lockfile)"
+COMPILE_ROOT="$(mktemp -d)/.supergoal/compiled"
+mkdir -p "$COMPILE_ROOT/phases"
+cat > "$COMPILE_ROOT/ROADMAP.md" <<'EOF'
+# Roadmap: Compile Demo
+
+**Task:** Build a demo widget
+
+## Phase 1 — Build Feature
+
+**Deliverables:**
+- src/widget.js
+
+**Acceptance criteria:**
+- [mechanical] src/widget.js exists
+- [ ] [trust-prior] manual review recorded
+- looks good
+
+**Mandatory commands:**
+- `npm test`
+- `npm run lint`
+
+**Evidence required:**
+- commands/c1.log
+
+**Allowed paths:**
+- src/
+
+**Dependencies:** none
+
+## Phase 2 — Polish & Harden
+
+**Acceptance criteria:**
+- [mechanical] final audit passes
+
+**Mandatory commands:**
+- `npm test`
+
+**Dependencies:** 1
+EOF
+printf '# State\n**Baseline ref:** no-git\n' > "$COMPILE_ROOT/STATE.md"
+run python "$SG" compile "$COMPILE_ROOT"
+assert_rc "compile exits 0" 0
+assert_contains "compile prints RUN_COMPILED" "RUN_COMPILED 2 phase(s), 2 command(s)" "$OUT"
+assert_contains "compile warns on unscoped phase" "COMPILE_WARN phase 2" "$OUT"
+run python "$SG" validate-run "$COMPILE_ROOT"
+assert_rc "compiled run.json validates" 0
+COMPILE_ROOT="$COMPILE_ROOT" python - <<'PY'
+import json, os, sys
+from pathlib import Path
+d = json.loads((Path(os.environ["COMPILE_ROOT"]) / "run.json").read_text())
+assert len(d["commands"]) == 2, d["commands"]                       # npm test deduped across phases
+p1 = d["phases"][0]
+assert p1["commands"] == ["c1", "c2"], p1["commands"]
+assert p1["allowed_paths"] == ["src/"], p1["allowed_paths"]
+classes = [c["verification"] for c in p1["criteria"]]
+assert classes == ["mechanical", "trust-prior", "trust-prior"], classes
+assert d["phases"][1]["depends_on"] == [1], d["phases"][1]["depends_on"]
+print("structure-ok")
+PY
+assert_rc "compiled run.json has expected structure" 0
+rm -rf "$(dirname "$(dirname "$COMPILE_ROOT")")"
+
+echo
+echo "[13] malformed ROADMAP fails compile loudly"
+BAD_ROOT="$(mktemp -d)/.supergoal/bad"
+mkdir -p "$BAD_ROOT/phases"
+printf '# Roadmap: Bad\n\n## Phase 1 — Build\n\n**Deliverables:**\n- x\n' > "$BAD_ROOT/ROADMAP.md"
+printf '# State\n**Baseline ref:** no-git\n' > "$BAD_ROOT/STATE.md"
+run python "$SG" compile "$BAD_ROOT"
+assert_rc "compile fails without criteria" 1
+assert_contains "compile reports the defect" "COMPILE_ERROR" "$OUT"
+rm -rf "$(dirname "$(dirname "$BAD_ROOT")")"
+
+echo
+echo "[14] compile refuses to clobber an in-flight run without --force"
+LIVE_ROOT="$(mktemp -d)/.supergoal/live"
+mkdir -p "$LIVE_ROOT/phases"
+printf '# Roadmap: Live\n\n## Phase 1 — Build\n\n**Acceptance criteria:**\n- [mechanical] ok\n' > "$LIVE_ROOT/ROADMAP.md"
+printf '# State\n**Baseline ref:** no-git\n' > "$LIVE_ROOT/STATE.md"
+printf '{"schema_version":"1.0","run":{"id":"live","status":"IN_PROGRESS"},"commands":[],"phases":[]}\n' > "$LIVE_ROOT/run.json"
+run python "$SG" compile "$LIVE_ROOT"
+assert_rc "compile refuses in-flight run" 1
+assert_contains "compile explains the refusal" "in-flight run" "$OUT"
+rm -rf "$(dirname "$(dirname "$LIVE_ROOT")")"
+
+echo
 printf 'sg-run-kernel.test.sh: %s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

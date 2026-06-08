@@ -502,6 +502,255 @@ def cmd_init_run(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- ROADMAP.md -> run.json compiler (lockfile model) ------------------------
+#
+# ROADMAP.md is the human-authored plan and the single thing a reviewer edits at
+# the Stage 6 confirmation. `compile` parses it into run.json, the machine
+# contract that drives gates/telemetry/audit/report — like a lockfile compiled
+# from a manifest. Humans never hand-edit run.json. The parsed format is the
+# labeled-section ROADMAP template:
+#
+#   ## Phase 1 — Name
+#   **Deliverables:** / **Acceptance criteria:** / **Mandatory commands:**
+#   **Evidence required:** / **Allowed paths:** / **Dependencies:**
+#
+# Acceptance-criteria bullets may carry a [mechanical] / [human] / [trust-prior]
+# tag; untagged criteria default to trust-prior so unverified work shows up as
+# trust debt rather than passing silently.
+
+_PHASE_HEADER_RE = re.compile(r"^##\s+Phase\s+(\d+)\b\s*[—:\-]*\s*(.*?)\s*$")
+_LABEL_RE = re.compile(r"^\*\*(.+?):\*\*\s*(.*)$")
+_CHECKBOX_RE = re.compile(r"^\[[ xX]\]\s*")
+_CRITERION_CLASS_RE = re.compile(r"^\[(mechanical|human|trust-prior)\]\s*(.*)$", re.IGNORECASE)
+_ORDERED_RE = re.compile(r"^[0-9]+\.\s+")
+
+_SECTION_ALIASES = [
+    ("acceptance criteria", "criteria"),
+    ("sub-passes", "criteria"),
+    ("criteria", "criteria"),
+    ("deliverables", "deliverables"),
+    ("mandatory commands", "commands"),
+    ("commands", "commands"),
+    ("evidence required", "required_evidence"),
+    ("evidence", "required_evidence"),
+    ("allowed paths", "allowed_paths"),
+    ("dependencies", "depends_on"),
+    ("depends on", "depends_on"),
+]
+
+
+def _section_key(label: str) -> str | None:
+    low = label.strip().lower()
+    for prefix, key in _SECTION_ALIASES:
+        if low == prefix or low.startswith(prefix):
+            return key
+    return None
+
+
+def _strip_backticks(text: str) -> str:
+    return text.strip().strip("`").strip()
+
+
+def _criterion_class(text: str) -> tuple[str, str]:
+    match = _CRITERION_CLASS_RE.match(text.strip())
+    if match:
+        return match.group(1).lower(), match.group(2).strip()
+    return "trust-prior", text.strip()
+
+
+def _command_class(command: str) -> str:
+    low = command.lower()
+    for token in ("lint", "test", "build", "typecheck", "fmt", "format"):
+        if token in low:
+            return "lint" if token in ("fmt", "format") else token
+    return "command"
+
+
+def _parse_depends(value: str | None) -> list[int]:
+    if not value:
+        return []
+    if value.strip().lower() in {"none", "n/a", "—", "-", ""}:
+        return []
+    return [int(n) for n in re.findall(r"\d+", value)]
+
+
+def _collect_sections(body: list[str]) -> dict[str, dict[str, Any]]:
+    sections: dict[str, dict[str, Any]] = {}
+    current: str | None = None
+    for line in body:
+        stripped = line.strip()
+        label = _LABEL_RE.match(stripped)
+        if label:
+            current = _section_key(label.group(1))
+            if current is not None:
+                sec = sections.setdefault(current, {"inline": "", "items": []})
+                if label.group(2).strip():
+                    sec["inline"] = label.group(2).strip()
+            continue
+        if current is None:
+            continue
+        if stripped.startswith("- "):
+            sections[current]["items"].append(_CHECKBOX_RE.sub("", stripped[2:].strip()).strip())
+        elif _ORDERED_RE.match(stripped):
+            sections[current]["items"].append(_ORDERED_RE.sub("", stripped).strip())
+    return sections
+
+
+def parse_roadmap(text: str) -> dict[str, Any]:
+    """Parse ROADMAP.md into {title, task, phases:[...]}. Raises ValueError with a
+    clear message on a malformed plan so Stage 6.5 preflight fails loudly."""
+    lines = text.splitlines()
+    title = ""
+    task = ""
+    for line in lines:
+        if not title:
+            m = re.match(r"^#\s+Roadmap:\s*(.+?)\s*$", line)
+            if m:
+                title = m.group(1).strip()
+        if not task:
+            m = re.match(r"^\*\*Task:\*\*\s*(.+?)\s*$", line)
+            if m:
+                task = m.group(1).strip()
+
+    blocks: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for line in lines:
+        header = _PHASE_HEADER_RE.match(line)
+        if header:
+            current = {"id": int(header.group(1)), "name": header.group(2).strip(), "body": []}
+            blocks.append(current)
+        elif current is not None:
+            current["body"].append(line)
+
+    if not blocks:
+        raise ValueError("no '## Phase N — Name' sections found in ROADMAP.md")
+
+    parsed_phases: list[dict[str, Any]] = []
+    for block in blocks:
+        pid = block["id"]
+        name = block["name"]
+        if not name:
+            raise ValueError(f"phase {pid}: missing a name in its '## Phase {pid}' header")
+        sections = _collect_sections(block["body"])
+
+        raw_criteria = sections.get("criteria", {}).get("items", [])
+        if not raw_criteria:
+            raise ValueError(
+                f"phase {pid} ({name}): no '**Acceptance criteria:**' bullets — every phase needs at least one"
+            )
+        criteria = []
+        for i, item in enumerate(raw_criteria, start=1):
+            cls, ctext = _criterion_class(item)
+            criteria.append({"id": f"p{pid}-c{i}", "text": ctext, "verification": cls, "evidence": []})
+
+        depends_src = sections.get("depends_on", {})
+        depends_on = _parse_depends(depends_src.get("inline") or " ".join(depends_src.get("items", [])))
+        allowed_paths = [p for p in sections.get("allowed_paths", {}).get("items", []) if p]
+
+        parsed_phases.append({
+            "id": pid,
+            "name": name,
+            "status": "pending",
+            "allowed_paths": allowed_paths,
+            "depends_on": depends_on,
+            "criteria": criteria,
+            "deliverables": [d for d in sections.get("deliverables", {}).get("items", []) if d],
+            "required_evidence": [e for e in sections.get("required_evidence", {}).get("items", []) if e],
+            "_command_strings": [_strip_backticks(c) for c in sections.get("commands", {}).get("items", []) if _strip_backticks(c)],
+        })
+
+    return {"title": title, "task": task, "phases": parsed_phases}
+
+
+def _state_baseline(run_root: Path) -> str | None:
+    state = run_root / "STATE.md"
+    if not state.exists():
+        return None
+    match = re.search(
+        r"Baseline ref:\*\*\s*([^\s<]+)|Baseline ref:\s*([^\s<]+)",
+        state.read_text(encoding="utf-8", errors="replace"),
+    )
+    if match:
+        return (match.group(1) or match.group(2) or "").strip() or None
+    return None
+
+
+def cmd_compile(args: argparse.Namespace) -> int:
+    run_root = run_root_from_arg(args.run_root)
+    roadmap = run_root / "ROADMAP.md"
+    if not roadmap.exists():
+        die(f"COMPILE_ERROR ROADMAP.md not found at {roadmap}")
+
+    existing = manifest_path(run_root)
+    if existing.exists() and not args.force:
+        prev_status = str(load_json(existing).get("run", {}).get("status", ""))
+        if prev_status in {"IN_PROGRESS", "AUDIT_PENDING", "COMPLETE"}:
+            die(
+                f"COMPILE_ERROR refusing to recompile an in-flight run (status {prev_status}); "
+                "re-run with --force to discard live state"
+            )
+
+    try:
+        parsed = parse_roadmap(roadmap.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        die(f"COMPILE_ERROR {exc}")
+
+    # Build the deduplicated command registry; phases reference command ids.
+    registry: dict[str, str] = {}
+    commands_manifest: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for phase in parsed["phases"]:
+        ids: list[str] = []
+        for cmd in phase.pop("_command_strings"):
+            if cmd not in registry:
+                cid = f"c{len(registry) + 1}"
+                registry[cmd] = cid
+                commands_manifest.append({"id": cid, "command": cmd, "class": _command_class(cmd), "required": True})
+            ids.append(registry[cmd])
+        phase["commands"] = ids
+        if not phase["allowed_paths"]:
+            phase["allowed_paths"] = ["*"]
+            warnings.append(f"phase {phase['id']}: no '**Allowed paths:**' — scope firewall is disabled for this phase")
+
+    baseline = args.baseline or _state_baseline(run_root) or "no-git"
+    now = utc_now()
+    manifest = {
+        "schema_version": SCHEMA_VERSION,
+        "run": {
+            "id": run_root.name,
+            "title": parsed["title"] or run_root.name,
+            "task": parsed["task"] or "",
+            "status": "READY_TO_DISPATCH",
+            "current_phase": parsed["phases"][0]["id"],
+            "run_root": str(run_root),
+            "baseline_ref": baseline,
+            "host": args.host or "unknown",
+            "legacy": False,
+            "created_at": now,
+            "last_update": now,
+        },
+        "commands": commands_manifest,
+        "phases": parsed["phases"],
+    }
+
+    errors = validate_manifest(manifest, run_root)
+    if errors:
+        print("COMPILE_ERROR run.json failed validation:")
+        for error in errors:
+            print(f"- {error}")
+        return 1
+
+    run_root.mkdir(parents=True, exist_ok=True)
+    write_json(manifest_path(run_root), manifest)
+    append_event(run_root, "run.compiled", status="READY_TO_DISPATCH",
+                 message=f"compiled {len(parsed['phases'])} phase(s) from ROADMAP.md")
+    for warning in warnings:
+        print(f"COMPILE_WARN {warning}")
+    print(f"RUN_COMPILED {len(parsed['phases'])} phase(s), {len(commands_manifest)} command(s) -> {manifest_path(run_root)}")
+    print(f"SUPERGOAL_RUN_KERNEL_READY {manifest_path(run_root)}")
+    return 0
+
+
 def cmd_record_event(args: argparse.Namespace) -> int:
     data: dict[str, Any] | None = None
     if args.data_json:
@@ -897,6 +1146,13 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--host")
     init.add_argument("--force", action="store_true")
     init.set_defaults(func=cmd_init_run)
+
+    compile_p = sub.add_parser("compile", help="compile ROADMAP.md into run.json (lockfile)")
+    compile_p.add_argument("run_root")
+    compile_p.add_argument("--baseline", help="baseline commit ref (defaults to STATE.md or no-git)")
+    compile_p.add_argument("--host")
+    compile_p.add_argument("--force", action="store_true", help="recompile even over an in-flight run")
+    compile_p.set_defaults(func=cmd_compile)
 
     rec = sub.add_parser("record-event", help="append an event to events.jsonl")
     rec.add_argument("run_root")

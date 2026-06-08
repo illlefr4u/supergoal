@@ -47,15 +47,25 @@ Non-blocking decisions recorded here so we can proceed without round-trips. If a
 - {{P1_FILE_OR_FEATURE_2}}
 
 **Acceptance criteria:**
-- [ ] {{CRIT_1}}
-- [ ] {{CRIT_2}}
-- [ ] {{CRIT_3}}
+<!-- Tag each criterion [mechanical] (a command/file proves it), [human] (a person
+     must confirm), or [trust-prior] (asserted, unverifiable). Untagged = trust-prior. -->
+- [mechanical] {{CRIT_1}}
+- [human] {{CRIT_2}}
+- [trust-prior] {{CRIT_3}}
 
 **Mandatory commands:**
 - `{{CMD_1}}`
 - `{{CMD_2}}`
 
+**Allowed paths:**
+<!-- Files/dirs this phase may change. The scope firewall flags edits outside them.
+     A bare `*` (or omitting this section) disables the firewall for the phase. -->
+- {{PATH_OR_DIR_1}}
+- {{PATH_OR_DIR_2}}
+
 **Evidence required:**
+<!-- Paths under evidence/phase-N/ that must exist for the gate to pass,
+     e.g. commands/test.log, diffs/summary.txt, screenshots/home.png. -->
 - {{EVIDENCE_1}}
 - {{EVIDENCE_2}}
 
