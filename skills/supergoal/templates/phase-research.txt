@@ -1,0 +1,71 @@
+# Research phase spec template — write to {{RUN_ROOT}}/phases/phase-N.md
+# ({{RUN_ROOT}} is this run's namespaced dir, e.g. .supergoal/usa-distance-Ab3Kx9;
+#  substitute the concrete path along with the other {{...}} placeholders.)
+#
+# Research-mode phase spec. The executing agent reads it from disk and follows
+# {{RUN_ROOT}}/PROTOCOL.md (the RESEARCH protocol) for the loop, the
+# cross-verification gates, the negative-result gate, and the checkpoints.
+# No char budget. Keep the SUPERGOAL_PHASE_START block verbatim so
+# validate-phase.sh and the runtime can anchor on it.
+
+SUPERGOAL_PHASE_START
+Phase: {{N}} of {{TOTAL}} — {{PHASE_NAME}}
+Task: {{ONE_LINE_TASK}}
+Type: research/{{PHASE_TYPE}}   # source-discovery | extraction | cross-verification | synthesis | adversarial-audit
+Mandatory commands: {{VERIFICATION_GATES_CSV}}   # real shell where possible (curl an API, parse with jq); else named gates
+Acceptance criteria: {{CRIT_COUNT}}
+Evidence required: {{EVIDENCE_CSV}}   # quoted source excerpts + URLs + access dates
+Depends on phases: {{DEPS}}
+
+## Why
+
+{{WHY_ONE_SENTENCE}}
+
+## Work
+
+- {{WORK_BULLET_1}}
+- {{WORK_BULLET_2}}
+- ...
+
+## Findings / deliverables (each carries a citation)
+
+- {{DATUM_1}} — source(s): {{URL + TIER}}, accessed {{DATE}}, confidence {{high | med | single-source}}
+- {{DATUM_2}} — ...
+
+## Acceptance criteria (falsifiable — verify each in transcript)
+
+- {{CRITERION_1}}   # e.g. "datum X confirmed by >=2 independent primary sources, OR flagged single-source"
+- {{CRITERION_2}}   # e.g. "if unavailable: locked source plan shows per-source failed fetch + audit re-attempt"
+- ...
+
+## Mandatory commands (verification gates — run each, surface evidence)
+
+- {{GATE_1}}   # which locked sources were fetched (URLs + access dates)
+- {{GATE_2}}   # cross-check / conflict / recency / provenance gate run
+- {{GATE_3}}   # real shell where applicable: `curl -s <api> | jq ...`
+
+## Evidence required in transcript
+
+- {{EVIDENCE_1}}   # quoted excerpt + URL + access date per key datum
+- {{EVIDENCE_2}}
+- ...
+
+## Cleanliness checks (research)
+
+- No uncited number — every figure maps to a source or is marked unverified
+- No fabricated / filled data; `~` / "about" must not mask missing verification
+- Modality preserved — don't turn "the source was asked X" into "the answer is X"
+- Negative results honest — "unavailable" only through the locked-plan gate
+
+## Notes
+
+{{ANY_PHASE_SPECIFIC_GUIDANCE}}   # e.g. "delegate the fan-out to the deep-research skill if present"
+
+---
+
+During execution the agent prints SUPERGOAL_PHASE_START (above), does the work,
+then prints SUPERGOAL_PHASE_VERIFY, MEMORY_SAVED, and SUPERGOAL_PHASE_DONE in
+order. On a failed gate it follows the 3-strike recovery in
+{{RUN_ROOT}}/PROTOCOL.md. A finding that invalidates the question or the source
+strategy emits RESCOPE (see PROTOCOL.md) instead of forcing stale decomposition
+forward.

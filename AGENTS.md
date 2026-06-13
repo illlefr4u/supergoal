@@ -169,8 +169,9 @@ Full format spec: `skills/supergoal/references/goal-format.md`.
 - **One run = one namespace; one working tree ≠ safe for two executions.** v0.7 namespacing (`.supergoal/<run-id>/` via `claim-run.sh`) isolates *planning* artifacts so concurrent `/supergoal` planning can't clobber. It does **not** make two `/goal` *executions* in the same working tree safe — they still edit the same source files. For real parallelism, each task needs its own `git worktree`. Don't "fix" the coexistence warning by implying parallel execution in one tree is safe.
 - **Mermaid renders natively in GitHub README** but not always in every external markdown viewer. Stick to standard Mermaid syntax (flowchart TD / LR, subgraphs, classDef styling).
 
-## Working state (as of v0.7.0 — 2026-06-06)
+## Working state (as of v0.8.0 — 2026-06-13)
 
+- **v0.8.0 dual-mode fork (research mode added).** A Stage 0 router auto-detects build vs research (deliverable-first) and dispatches; the build path is unchanged behind it. Research adds `templates/PROTOCOL-research.md`, `templates/phase-research.txt`, `references/source-discovery.md`, `references/research-depth.md`, `scripts/detect-research-tools.sh`, a `Mode:` field in `STATE.md`, and the Research Flow (R1–R7) in `SKILL.md`. Design + codex arch-review: `skills/supergoal/docs/2026-06-13-research-mode-design.md`. Fork of robzilla1738/supergoal (MIT); base skill credited to Robert Courson. **Research mode is shipped but not yet dogfooded end-to-end on a live `/goal` run** — first research run will be the validation signal.
 - All planning + execution surfaces (Stages 0–6.5 + Phase loop + Final audit) are implemented and live, including the v0.6 additions, the v0.6.1 working-tree-audit fix, and the **v0.7.0 concurrent-run isolation**: every run claims its own `.supergoal/<run-id>/` namespace via `scripts/claim-run.sh` (`mktemp -d`, atomic create-or-fail), so two runs started in the same working tree can't overwrite each other's `STATE.md` / `ROADMAP.md` / `phases/`. `PROTOCOL.md` + phase specs use a `{{RUN_ROOT}}` placeholder substituted at Stage 7; the dispatched `/goal` line and the reference docs reference `<run-root>/…`. Stage 0 prints a coexistence warning (use a separate `git worktree` for parallel *execution*).
 - README headline, CHANGELOG top entry, and `plugin.json` `version` all aligned at v0.7.0.
 - Fixture tests pass: `tests/repo-state.test.sh` (47 assertions) and `tests/claim-run.test.sh` (23 assertions, incl. the 24-way concurrent-claim race). Both `claude plugin validate` calls and `validate-phase.sh` pass.
@@ -184,6 +185,7 @@ Full format spec: `skills/supergoal/references/goal-format.md`.
 
 ## Related
 
-- Repo: https://github.com/robzilla1738/supergoal
+- Fork repo (this): https://github.com/illlefr4u/supergoal
+- Upstream (base skill): https://github.com/robzilla1738/supergoal
 - License: MIT
-- Author: Robert Courson
+- Base author: Robert Courson (robzilla1738) · Research-mode fork: illlefr4u

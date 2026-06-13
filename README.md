@@ -6,6 +6,21 @@ Plan deeply, then autonomously build until it's done.
 
 Works on **Claude Code** and **Codex** (Codex CLI).
 
+## Fork — dual-mode (build + research)
+
+This is a fork of **[robzilla1738/supergoal](https://github.com/robzilla1738/supergoal)** (MIT, by Robert Courson) that adds a second mode. The original drives **software builds** to completion; this fork adds a **research mode** so the same machinery — deep planning, adaptive phase decomposition, one autonomous `/goal`, a final audit, per-phase memory — also drives **research / data tasks** to a *verified, cited answer*.
+
+A **Stage 0 router** auto-detects the mode from the task's terminal deliverable (code → build; an answer/data → research) and dispatches. The build path is **unchanged** from upstream; research is a separate additive module with its own protocol, phase template, and source-discovery references.
+
+What research mode adds:
+
+- **Source taxonomy + locked source plan** — tier every source (primary → provider → aggregator → … → derived); a bounded multi-modal sweep locks a ranked plan before any extraction.
+- **Cross-verification gates** — source-conflict adjudication, recency/staleness, and provenance independence (five sites reprinting one feed count as one source).
+- **A real negative-result gate** — "data unavailable" is a *valid* terminal answer, but only through evidence: a locked plan, per-source failed-fetch proof, and an audit re-attempt of the strongest source. The 3-strike loop can neither thrash on missing data nor surrender prematurely.
+- **Two research checkpoints** — after the source plan locks, and before accepting a negative terminal.
+
+Design notes + the codex architecture review: [`skills/supergoal/docs/2026-06-13-research-mode-design.md`](skills/supergoal/docs/2026-06-13-research-mode-design.md). Full credit for the base skill (Stages 0–7, the audit, memory writeback, concurrent-run isolation) to **robzilla1738**.
+
 ## How it works (at a glance)
 
 ```mermaid
@@ -96,14 +111,14 @@ Slash commands only fire from user input, so Stage 7 is an honest one-paste hand
 Three commands inside a Claude Code session:
 
 ```text
-/plugin marketplace add https://github.com/robzilla1738/supergoal.git
+/plugin marketplace add https://github.com/illlefr4u/supergoal.git
 /plugin install supergoal@supergoal
 /reload-plugins
 ```
 
 That's it. `/supergoal` is available immediately. Plugin install was verified end-to-end against the live repo (installs as `supergoal@supergoal`, ~307 tokens always-on + ~10k on-invoke).
 
-> **Tip:** the `owner/repo` shorthand (`/plugin marketplace add robzilla1738/supergoal`) also works **only if you have GitHub SSH keys configured**, since it defaults to `git@github.com:` cloning. If you hit "SSH authentication failed" or "Permission denied (publickey)", use the HTTPS URL form above instead.
+> **Tip:** the `owner/repo` shorthand (`/plugin marketplace add illlefr4u/supergoal`) also works **only if you have GitHub SSH keys configured**, since it defaults to `git@github.com:` cloning. If you hit "SSH authentication failed" or "Permission denied (publickey)", use the HTTPS URL form above instead.
 
 If `/plugin install` errors with "not found", run `/plugin marketplace update supergoal` and try again.
 
@@ -111,7 +126,7 @@ If `/plugin install` errors with "not found", run `/plugin marketplace update su
 
 ```bash
 mkdir -p ~/.claude/skills
-git clone https://github.com/robzilla1738/supergoal /tmp/supergoal-clone
+git clone https://github.com/illlefr4u/supergoal /tmp/supergoal-clone
 cp -R /tmp/supergoal-clone/skills/supergoal ~/.claude/skills/
 rm -rf /tmp/supergoal-clone
 ```
@@ -124,7 +139,7 @@ Codex doesn't have a plugin marketplace, so the install is a manual clone-and-co
 
 ```bash
 mkdir -p ~/.codex/skills
-git clone https://github.com/robzilla1738/supergoal /tmp/supergoal-clone
+git clone https://github.com/illlefr4u/supergoal /tmp/supergoal-clone
 cp -R /tmp/supergoal-clone/skills/supergoal ~/.codex/skills/
 rm -rf /tmp/supergoal-clone
 ```
@@ -195,24 +210,31 @@ Two `/supergoal` **planning** sessions can safely share a working tree — their
 
 ```
 skills/supergoal/
-├── SKILL.md
+├── SKILL.md                       Stage 0 router + build flow + research flow
 ├── references/
-│   ├── planning-depth.md          what makes a plan deep enough to deserve "Super"
-│   ├── phase-design.md            how to slice phases (adaptive count, no cap)
+│   ├── planning-depth.md          what makes a plan deep enough to deserve "Super" (build)
+│   ├── phase-design.md            how to slice phases (adaptive count, no cap) (build)
 │   ├── goal-format.md             /goal mechanics on CC + Codex, required transcript blocks
-│   └── repo-state-comparison.md   the one comparison strategy (working tree vs baseline)
+│   ├── repo-state-comparison.md   the one comparison strategy (working tree vs baseline)
+│   ├── research-depth.md          the planning-depth bar for research runs (research)
+│   └── source-discovery.md        sweep + source taxonomy + locked-source-plan format (research)
 ├── scripts/
-│   ├── claim-run.sh           atomically claims a unique per-run dir (concurrent-run isolation)
-│   ├── detect-env.sh          greenfield env recon
-│   ├── detect-stack.sh        brownfield stack recon
-│   ├── summarize-repo.sh      repo map
-│   ├── repo-state.sh          complete working-tree-vs-baseline comparison (audit + cleanliness)
-│   └── validate-phase.sh      checks phase spec structure
-└── templates/
-    ├── ROADMAP.md
-    ├── STATE.md
-    ├── phase-goal.txt         phase spec skeleton
-    └── PROTOCOL.md            execution loop + failure recovery
+│   ├── claim-run.sh               atomically claims a unique per-run dir (concurrent-run isolation)
+│   ├── detect-env.sh              greenfield env recon (build)
+│   ├── detect-stack.sh            brownfield stack recon (build)
+│   ├── summarize-repo.sh          repo map (build)
+│   ├── detect-research-tools.sh   research tool inventory + source taxonomy (research)
+│   ├── repo-state.sh              complete working-tree-vs-baseline comparison (audit + cleanliness)
+│   └── validate-phase.sh          checks phase spec structure
+├── templates/
+│   ├── ROADMAP.md
+│   ├── STATE.md                   live progress (carries the Mode: field)
+│   ├── phase-goal.txt             build phase spec skeleton
+│   ├── phase-research.txt         research phase spec skeleton (research)
+│   ├── PROTOCOL.md                build execution loop + failure recovery
+│   └── PROTOCOL-research.md       research execution loop: source-lock, verify gates, negative-result gate (research)
+└── docs/
+    └── 2026-06-13-research-mode-design.md   dual-mode design + codex arch-review
 ```
 
 ## Requirements
@@ -222,7 +244,7 @@ skills/supergoal/
 
 ## Version
 
-Current: **v0.7.0**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current: **v0.8.0** (dual-mode fork). See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Marketplace consumers can pin a specific version via the `/plugin` UI. Auto-updates are off by default for third-party marketplaces — enable per-marketplace via `/plugin` → **Marketplaces** if you want them.
 

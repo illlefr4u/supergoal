@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-06-13
+
+**Dual-mode fork (build + research).** A fork of [robzilla1738/supergoal](https://github.com/robzilla1738/supergoal) that adds a research mode alongside the original build mode. A Stage 0 router auto-detects the task's terminal deliverable — code → build, an answer/data → research — and dispatches. The build path is unchanged; research is a separate additive module that drives research/data tasks to a verified, cited answer with the same plan → autonomous `/goal` → final-audit shape. Additive and backward-compatible: every existing transcript marker, `STATE.md` field, and protocol step is preserved; a missing `Mode:` reads as `build`.
+
+### Added
+
+- **Stage 0 router (`SKILL.md`).** Deliverable-first mode detection (verb second — so "build a tool that researches X" / "investigate the failing build and patch it" correctly classify as **build**), with a single `AskUserQuestion` on true ambiguity. Build dispatches through Stages 1–7 verbatim; research dispatches to the new Research Flow.
+- **Research Flow (Stages R1–R7, `SKILL.md`).** Intake + research recon → deep-think (with the negative-result gate predefined) → decompose into research phase types → roadmap/specs → self-critique → plan review → one-paste `/goal` handoff. Delegates per-phase fan-out to a `deep-research` skill when present rather than reimplementing it.
+- **`templates/PROTOCOL-research.md`.** The research execution manual (copied to `<run-root>/PROTOCOL.md` for research runs, so the `/goal` end-state markers stay identical to build): source-lock, the three cross-verification gates (conflict adjudication / recency / provenance independence), the concrete negative-result gate, two user checkpoints, RESCOPE, and an adversarial audit.
+- **`templates/phase-research.txt`.** Research phase spec skeleton — findings + citations, falsifiable acceptance criteria, verification gates, research cleanliness checks (no uncited number, no fabricated data, modality preserved).
+- **`references/source-discovery.md`.** Multi-modal sweep (by entity / container / content / time), the 6-tier source taxonomy, and the locked-source-plan format + bound rules.
+- **`references/research-depth.md`.** The research planning-depth bar — the top-3 research risks and falsifiable-criteria examples.
+- **`scripts/detect-research-tools.sh`.** Research recon: a tool-inventory checklist (the agent fills it from its actual tool list), the source taxonomy, and the local fetch/compute capabilities a shell can verify.
+- **`Mode:` field in `templates/STATE.md`** — `build | research`, set by the router; absent/legacy reads as `build`.
+- **`skills/supergoal/docs/2026-06-13-research-mode-design.md`** — the design + a codex architecture review (P1/P2 resolutions: router isolation of the build path, the concrete negative-result gate, deliverable-first detection, deep-research delegation, the cross-verification gates).
+
+### Unchanged (build mode)
+
+- The entire build flow (Stages 1–7, the phase loop, the final audit, 3-strike recovery, v0.7 concurrent-run isolation) is preserved behind the router. `tests/repo-state.test.sh` and `tests/claim-run.test.sh` still pass; `plugin.json` and `marketplace.json` validate.
+
+### Credit
+
+Base skill — Stages 0–7, the audit, memory writeback, concurrent-run isolation, the whole `/goal`-as-end-state architecture — by **robzilla1738 (Robert Courson)**, MIT. This fork adds only the research mode.
+
 ## [0.7.0] — 2026-06-06
 
 Concurrent-run isolation. Two `/supergoal` runs started in the same working tree both defaulted to a single flat `.supergoal/` directory and overwrote each other's `STATE.md` / `ROADMAP.md` / `phases/` / `applied-memories.md` — a real, observed data-loss bug. Every run now claims its **own** namespaced subdirectory under `.supergoal/`, so the planning artifacts of two runs can never collide.

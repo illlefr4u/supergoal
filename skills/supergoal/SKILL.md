@@ -1,6 +1,6 @@
 ---
 name: supergoal
-description: Plan and autonomously build a software task end-to-end. Triggered by `/supergoal`, "plan and ship X", "supercharged plan", "autonomous build", "plan it out and don't stop until it's done", "I don't want to babysit this", or any non-trivial feature/refactor/redesign the user wants driven to completion. Strongly prefer over a plain plan when the user signals "every aspect", "fully", "perfectly", "until done", or wants depth + autonomous follow-through. Recons the codebase, applies preloaded memory, researches best practices with whatever tools are available, decomposes into the right number of phases, gets one confirmation, then prepares a single ready-to-paste `/goal` command — one paste between you and done — that drives the entire chain to completion with built-in retry, fix-spec recovery, and per-phase memory writeback. Works on Claude Code and Codex.
+description: Plan and autonomously build a software task end-to-end. Triggered by `/supergoal`, "plan and ship X", "supercharged plan", "autonomous build", "plan it out and don't stop until it's done", "I don't want to babysit this", or any non-trivial feature/refactor/redesign the user wants driven to completion. Strongly prefer over a plain plan when the user signals "every aspect", "fully", "perfectly", "until done", or wants depth + autonomous follow-through. Recons the codebase, applies preloaded memory, researches best practices with whatever tools are available, decomposes into the right number of phases, gets one confirmation, then prepares a single ready-to-paste `/goal` command — one paste between you and done — that drives the entire chain to completion with built-in retry, fix-spec recovery, and per-phase memory writeback. Works on Claude Code and Codex. Dual-mode — also drives research/data tasks (find X and compare to Y, how many, is it true that…) to a verified, cited answer through the same plan → autonomous `/goal` → audit flow.
 argument-hint: <describe what you want built, fixed, or shipped>
 ---
 
@@ -40,6 +40,33 @@ Two human gates only: **clarifying questions for true gaps (Stage 1)** and **pla
 ### Why one `/goal`, not a chain
 
 `/goal` in both Claude Code and Codex takes a **short end-state condition**, not a long task body. A fast evaluator checks the condition against the transcript after each turn and auto-continues until it holds. Supergoal v3 leverages this directly: one `/goal` covers the whole run; phase work lives in files the agent reads from disk; the condition is "all phases done, `SUPERGOAL_RUN_COMPLETE` printed." No char budget, no inter-session chain dispatch, no fragility.
+
+---
+
+## Stage 0 (router) — detect mode: build or research
+
+Supergoal drives two kinds of task to completion with the same shape. Detect which **before** anything else — it selects the entire downstream flow.
+
+**Classify by the terminal deliverable first, the verb second:**
+
+- **build** — the deliverable is **code / files / a running system**. This includes verb-confusing cases: "build a tool that researches X", "write a scraper/API client", "investigate the failing build and patch it", "analyze the repo and refactor" — all **build** (the artifact is code).
+- **research** — the deliverable is **findings / data / an answer / a report**, with no code artifact: "find X and compare it to Y", "how much / how many", "is it true that…", "compile the data on…".
+
+Decide:
+
+1. Deliverable unambiguous → announce it (`Mode: build` or `Mode: research`) and proceed.
+2. Genuinely ambiguous → **one** `AskUserQuestion` (build vs research), then proceed. Don't guess on a true coin-flip; the flows diverge hard.
+
+Then run the **shared Stage 0** below (namespace claim + memory preload — both modes need these) and **dispatch**:
+
+- **build** → continue straight through **Stages 1–7 below**, exactly as written.
+- **research** → run the shared Stage 0's *namespace claim + memory preload* only, then **skip to "## Research Flow (Stages R1–R7)"** near the end of this file and follow that instead (its R1 does research-flavoured tool/source recon via `scripts/detect-research-tools.sh` in place of the build Tool-discovery sub-section). Do **not** run the build Stages 1–7.
+
+Persist the decision: whenever you write `STATE.md`, set its `Mode:` field to `build` or `research`. A missing/legacy `Mode:` reads as `build` (back-compat).
+
+> The build flow (Stages 1–7) below is **unchanged** from the single-mode version — the router is the only addition on the build path. Research is a separate additive flow with its own protocol (`templates/PROTOCOL-research.md`), phase template (`templates/phase-research.txt`), and references (`source-discovery.md`, `research-depth.md`).
+
+---
 
 ## Locate the skill directory
 
@@ -542,22 +569,103 @@ Write the memory file under the detected MEM_DIR using the standard `name` / `de
 
 ---
 
+## Research Flow (Stages R1–R7)
+
+Followed when the Stage 0 router detected **`Mode: research`**. The shape mirrors the build flow — deep planning, phase decomposition, one autonomous `/goal`, a final audit — but the deliverable is **findings / data / an answer**, and the verify gates are about **sources and evidence**, not build/typecheck/lint. The executing agent's manual is `templates/PROTOCOL-research.md` (copied to `<run-root>/PROTOCOL.md` at R7). Read `references/research-depth.md` for the planning bar and `references/source-discovery.md` for the locked-source-plan format.
+
+You arrive here **after** the shared Stage 0 (namespace claimed, memory preloaded). Two human gates only, same as build: **clarifying questions (R1)** and **plan review (R6)**. Inside the `/goal` run, research adds **two checkpoints** (after Source Discovery; before a negative terminal) — see PROTOCOL-research.md.
+
+### R1 — Intake & research recon
+
+1. Echo the question back in **one sentence**. Classify: `factual-lookup` / `comparison` / `compilation` / `claim-verification`.
+2. Run research recon: `bash "$SUPERGOAL_DIR/scripts/detect-research-tools.sh" > "$SUPERGOAL_ROOT/research-context.md"`. Read it; record which tools are actually present this session and the source taxonomy. (This replaces the build Tool-discovery sub-section.)
+3. Ask **0–2** clarifying questions only for true gaps the prompt + memory leave open: **scope** (exactly what datum/comparison), **freshness threshold** (how recent must the data be), **what counts as the answer** (and whether "publicly unavailable" is an acceptable terminal outcome). Most well-posed questions ask zero.
+
+### R2 — Deep think (research)
+
+Spend real cycles. Required regardless of tools:
+
+- **Top-3 research risks** — almost always (a) the data may not exist publicly, (b) source conflict, (c) fabrication temptation. State the mitigation for each (`references/research-depth.md`).
+- **Predefine the negative-result gate** — what "unavailable" would have to show to count as a valid PASS (locked plan + per-source failed-fetch evidence + audit re-attempt).
+- Apply memory hits.
+
+Optional, if present (`research-context.md`): if a **`deep-research` skill** exists, plan to **delegate** per-phase fan-out/verify to it rather than reimplementing — research-supergoal's value-add is the stateful, resumable, multi-phase orchestration around it, not the search itself.
+
+Write `$SUPERGOAL_ROOT/THINKING.md` (Goals, Question scope, Risks, Negative-result gate, Memory hits, Tools/skills relied on). ~2 pages. Bar: `references/research-depth.md`.
+
+### R3 — Decompose into research phases
+
+Adaptive count from the question. The phase **types** (not all always present):
+
+1. **Source Discovery** — bounded multi-modal sweep → a **LOCKED ranked source plan** (`references/source-discovery.md`). Always first.
+2. **Extraction** — pull data from the locked sources top-down; raw value + citation per datum.
+3. **Cross-Verification** — each key number confirmed by ≥2 independent primary sources, else flagged. Runs the conflict / recency / provenance gates.
+4. **Synthesis** — the answer/report/comparison; every claim cited.
+5. **Adversarial audit** — always last (analog of Polish & Harden): try to break each finding; re-attempt ≥1 source behind any "unavailable" claim.
+
+A trivial lookup might be 2–3 phases; a multi-entity comparison 5–7. Each phase has the same spec fields as build (Name / Why / Deliverables / Acceptance criteria / Mandatory commands → here verification gates / Evidence / Dependencies), research-flavoured per `templates/phase-research.txt`.
+
+### R4 — Write the roadmap and phase specs
+
+Three files under `$SUPERGOAL_ROOT/`:
+
+1. **`ROADMAP.md`** (template `templates/ROADMAP.md`).
+2. **`STATE.md`** (template `templates/STATE.md`) — set **`Mode: research`**.
+3. **`phases/phase-N.md`** — one per phase from `templates/phase-research.txt`.
+
+Validate each: `bash "$SUPERGOAL_DIR/scripts/validate-phase.sh" "$SUPERGOAL_ROOT/phases/phase-N.md"`.
+
+### R5 — Self-critique (cheap, once)
+
+Same shape as build Stage 6a, research questions:
+
+1. **Falsifiability:** is every acceptance criterion a yes/no test (a number with a source + date), not "found good data"?
+2. **Source strength:** does Source Discovery name the **strongest primary** before any fallback tier?
+3. **Negative-result honesty:** is "unavailable" gated (locked plan + per-source evidence + audit re-attempt), not a hand-wave?
+
+Record `Self-critique: clean.` or rewrite the offending criteria in place, re-validate, and surface the rewrites in R6.
+
+### R6 — Plan review & confirmation (hard gate)
+
+Print a scannable summary: the question, `Mode: research`, the phase list, the **intended source plan** (which primaries will be locked), key assumptions (incl. the freshness threshold + whether "unavailable" is acceptable), top-3 risks + mitigations, self-critique. Then **one** `AskUserQuestion`, header "Start research?", options: **Start now** / **Adjust scope or freshness** / **Tweak a phase** / **Restructure phases**. Loop on revisions; wait for "Start now". Never start on silence.
+
+### R7 — Hand off the `/goal` dispatch (one paste)
+
+Same one-paste handoff as build Stage 7, but copy the **research** protocol into the run root:
+
+```bash
+sed "s#{{RUN_ROOT}}#$SUPERGOAL_ROOT#g" "$SUPERGOAL_DIR/templates/PROTOCOL-research.md" > "$SUPERGOAL_ROOT/PROTOCOL.md"
+```
+
+The run root's `PROTOCOL.md` is now the research protocol, so the `/goal` end-state markers and the dispatch line are **identical** to build (the executor always reads `<run-root>/PROTOCOL.md`). Update `STATE.md` (`Status: READY_TO_DISPATCH`, `Current phase: 1`, `Mode: research`), validate each phase spec, then print the same ready-to-paste `/goal` block as Stage 7 (substituting the real run root). Add **one extra line** under it for research:
+
+> Note: a research run **pauses at two checkpoints** — after it locks the source plan, and before it accepts any "data unavailable" outcome. When it stops at a `RESEARCH_CHECKPOINT`, review and reply "continue" (or re-paste the `/goal` line) to resume.
+
+Then **stop** — the user's paste begins the autonomous research run.
+
+---
+
 ## Reference files
 
-- `references/planning-depth.md` — what makes a plan deep enough to deserve "Super"
-- `references/phase-design.md` — how to slice phases that auto-chain cleanly
-- `references/goal-format.md` — what `/goal` is on Claude Code + Codex, Supergoal's single-`/goal` shape, required transcript blocks
+- `references/planning-depth.md` — what makes a plan deep enough to deserve "Super" (build)
+- `references/phase-design.md` — how to slice phases that auto-chain cleanly (build)
+- `references/goal-format.md` — what `/goal` is on Claude Code + Codex, Supergoal's single-`/goal` shape, required transcript blocks (both modes)
+- `references/research-depth.md` — the planning-depth bar for **research** runs
+- `references/source-discovery.md` — multi-modal sweep, source taxonomy, and the locked-source-plan format (**research**)
 
 ## Scripts
 
-- `scripts/detect-stack.sh` — identifies language, package manager, framework, build/test/lint commands (brownfield)
-- `scripts/detect-env.sh` — greenfield environment recon
-- `scripts/summarize-repo.sh` — compressed repo map (brownfield)
-- `scripts/validate-phase.sh` — checks a phase spec has the required SUPERGOAL_PHASE_START marker and a non-empty acceptance criteria section
+- `scripts/detect-stack.sh` — identifies language, package manager, framework, build/test/lint commands (build/brownfield)
+- `scripts/detect-env.sh` — greenfield environment recon (build)
+- `scripts/summarize-repo.sh` — compressed repo map (build/brownfield)
+- `scripts/detect-research-tools.sh` — research tool inventory + source taxonomy scaffold (**research**)
+- `scripts/validate-phase.sh` — checks a phase spec has the required SUPERGOAL_PHASE_START marker and a non-empty acceptance criteria section (both modes)
 
 ## Templates
 
-- `templates/ROADMAP.md` — phase plan with dependencies
-- `templates/STATE.md` — live progress file
-- `templates/phase-goal.txt` — phase spec skeleton (work, criteria, evidence, mandatory commands)
-- `templates/PROTOCOL.md` — phase execution loop, failure recovery, memory writeback (copied to `<run-root>/PROTOCOL.md` at dispatch, with `{{RUN_ROOT}}` substituted for the run root)
+- `templates/ROADMAP.md` — phase plan with dependencies (both modes)
+- `templates/STATE.md` — live progress file (carries the `Mode:` field)
+- `templates/phase-goal.txt` — build phase spec skeleton (work, criteria, evidence, mandatory commands)
+- `templates/phase-research.txt` — **research** phase spec skeleton (findings + citations, falsifiable criteria, verification gates)
+- `templates/PROTOCOL.md` — build phase execution loop, failure recovery, memory writeback (copied to `<run-root>/PROTOCOL.md` at dispatch, `{{RUN_ROOT}}` substituted)
+- `templates/PROTOCOL-research.md` — **research** execution loop: source-lock, cross-verification gates, negative-result gate, checkpoints, adversarial audit (copied to `<run-root>/PROTOCOL.md` for research runs)

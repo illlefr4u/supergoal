@@ -1,6 +1,7 @@
 # State: {{TASK_TITLE}}
 
 **Status:** PLANNING → IN_PROGRESS → COMPLETE
+**Mode:** {{MODE}}    <!-- build | research — set by the Stage 0 router; absent/legacy reads as build (back-compat) -->
 **Current phase:** —
 **Started:** {{DATE}}
 **Last update:** {{DATE}}
